@@ -16,9 +16,16 @@ struct m61_statistics {
     unsigned long long fail_size;       // # bytes in failed alloc attempts
 };
 
-void m61_getstatistics(struct m61_statistics *stats);
+struct metadata
+{
+	size_t size;		// size of allocated memory 
+};
+
+//void m61_getstatistics(struct m61_statistics *stats);
+void m61_getstatistics(void);
 void m61_printstatistics(void);
 void m61_printleakreport(void);
+void m61_initstatistics(void);
 
 #if !M61_DISABLE
 #define malloc(sz)              m61_malloc((sz), __FILE__, __LINE__)

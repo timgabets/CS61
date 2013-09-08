@@ -1,3 +1,13 @@
+/*
+    CS61 Problem Set1. Debugging memory allocation.
+
+    The task is to write a debugging malloc library that helps track and debug memory usage, 
+    and that catches memory errors in our handout programs (and other programs).
+
+    Tim Gabets <gabets@g.harvard.edu>
+    September 2013
+*/
+
 #define M61_DISABLE 1
 #include "m61.h"
 #include <stdlib.h>
@@ -5,10 +15,28 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+struct m61_statistics stats;
+int statsinit = 0;      // inidicates does statistics initialized (!0) or not 0.
+
 void *m61_malloc(size_t sz, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
-    return malloc(sz);
+
+    struct metadata ptrdata; 
+    ptrdata.size = sz;
+
+    void* chunk = malloc(sizeof(struct metadata) + sz);
+    memcpy(&chunk, &ptrdata, sizeof(struct metadata));
+    
+    // TODO: update statistics
+    if(statsinit == 0)
+        m61_initstatistics();
+
+    stats.nactive++;
+    stats.active_size += sz;
+    stats.ntotal++;    
+    stats.total_size += sz;
+
+    return chunk + sizeof(struct metadata);
 }
 
 void m61_free(void *ptr, const char *file, int line) {
@@ -36,15 +64,15 @@ void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) {
     return ptr;
 }
 
-void m61_getstatistics(struct m61_statistics *stats) {
+void m61_getstatistics() {
     // Stub: set all statistics to enormous numbers
-    memset(stats, 255, sizeof(struct m61_statistics));
-    // Your code here.
+    //memset(stats, 255, sizeof(struct m61_statistics));
+
+    
 }
 
 void m61_printstatistics(void) {
-    struct m61_statistics stats;
-    m61_getstatistics(&stats);
+    //m61_getstatistics(&stats);
 
     printf("malloc count: active %10llu   total %10llu   fail %10llu\n",
            stats.nactive, stats.ntotal, stats.nfail);
@@ -54,4 +82,16 @@ void m61_printstatistics(void) {
 
 void m61_printleakreport(void) {
     // Your code here.
+}
+
+void m61_initstatistics()
+{
+    stats.nactive = 0;
+    stats.active_size = 0;
+    stats.ntotal = 0;
+    stats.total_size = 0;
+    stats.nfail = 0;
+    stats.fail_size = 0;
+
+    statsinit = 1;
 }
