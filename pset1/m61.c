@@ -17,7 +17,8 @@
 
 struct list* head = NULL;
 
-void *m61_malloc(size_t sz, const char *file, int line) {
+void *m61_malloc(size_t sz, const char *file, int line) 
+{
     (void) file, (void) line;   // avoid uninitialized variable warnings
 
     void* ptr = malloc(sz);
@@ -30,7 +31,8 @@ void *m61_malloc(size_t sz, const char *file, int line) {
     return ptr;
 }
 
-void m61_free(void *ptr, const char *file, int line) {
+void m61_free(void *ptr, const char *file, int line) 
+{
     (void) file, (void) line;   // avoid uninitialized variable warnings
 
     m61_removefromlist(ptr);
@@ -38,18 +40,39 @@ void m61_free(void *ptr, const char *file, int line) {
     free(ptr);
 }
 
-void *m61_realloc(void *ptr, size_t sz, const char *file, int line) {
+void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
+{
     void *new_ptr = NULL;
+    
     if (sz)
         new_ptr = m61_malloc(sz, file, line);
-    // Oops! In order to copy the data from `ptr` into `new_ptr`, we need
-    // to know how much data there was in `ptr`. That requires work.
-    // Your code here (to fix test008).
-    m61_free(ptr, file, line);
+    else
+    {
+        // reallocating zero bytes of memory? Okay!
+        m61_free(ptr, file, line);
+        return NULL;
+    }
+
+    if(head != NULL)
+    {
+        struct list* temp = head;
+        while(temp -> next != NULL)
+        {
+            if(temp -> address == ptr)
+            {
+                memcpy(new_ptr, ptr, temp -> size);
+                m61_free(ptr, file, line);
+            }
+
+
+            temp = temp -> next;
+        }
+    }   
     return new_ptr;
 }
 
-void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) {
+void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) 
+{
     // Your code here (to fix test010).
     void *ptr = m61_malloc(nmemb * sz, file, line);
     if (ptr)
@@ -57,7 +80,8 @@ void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) {
     return ptr;
 }
 
-void m61_getstatistics(struct m61_statistics* stats){
+void m61_getstatistics(struct m61_statistics* stats)
+{
     
     stats -> nactive = 0;        
     stats -> active_size = 0;    
@@ -72,7 +96,7 @@ void m61_getstatistics(struct m61_statistics* stats){
         struct list* temp = head;
 
         do{
-            /*
+            /* A simple remainder:
             struct m61_statistics {
                 unsigned long long nactive;         // # active allocations
                 unsigned long long active_size;     // # bytes in active allocations
@@ -119,7 +143,8 @@ void m61_printstatistics(void)
            stats.active_size, stats.total_size, stats.fail_size);
 }
 
-void m61_printleakreport(void) {
+void m61_printleakreport(void) 
+{
     // Your code here.
 }
 
@@ -166,7 +191,7 @@ void m61_removefromlist(void* ptr)
             temp = temp -> next;
     
     // at this point we either at the tail or at the needed item:
-    if(temp -> next != NULL)
+    if(temp != NULL)
         temp -> status = INACTIVE;
 
 }
