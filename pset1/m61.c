@@ -35,10 +35,16 @@ void m61_free(void *ptr, const char *file, int line)
 {
     (void) file, (void) line;   // avoid uninitialized variable warnings
 
-    if( m61_removefromlist(ptr) )
+    int rmstatus = m61_removefromlist(ptr);
+
+    if(rmstatus == 1)
         free(ptr);
-    else
+    
+    if(rmstatus == -1) 
         fprintf( stderr, "MEMORY BUG???: invalid free of pointer %p, not in heap\n", ptr);
+
+    if(rmstatus == -2)
+        fprintf(stderr, "MEMORY BUG???: invalid free of pointer %p\n", ptr);
 }
 
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
@@ -150,7 +156,7 @@ void m61_printleakreport(void)
 }
 
 // adding items to the list
- void m61_add2list(void* ptr, size_t sz, int status)
+ int m61_add2list(void* ptr, size_t sz, int status)
  {
    
     if(head != NULL)
@@ -169,6 +175,7 @@ void m61_printleakreport(void)
         tail -> status = status;
         tail -> next = NULL;       
 
+        return 1;   // success
     }
     else
     {
@@ -178,6 +185,7 @@ void m61_printleakreport(void)
         head -> status = status;
         head -> next = NULL;
 
+        return 1; // success
     }       
 }
 
@@ -196,11 +204,17 @@ int m61_removefromlist(void* ptr)
         // at this point we either at the tail or at the needed item:
         if(temp -> address == ptr)
         {
-            temp -> status = INACTIVE;
+            if(temp -> status == ACTIVE)
+                temp -> status = INACTIVE;
+            else    // memory was already freed
+            {
+                return -2;  // MEMORY BUG???: invalid free of pointer ???
+            }
+
             return 1;   // success
         }
     }
 
     // either head in NULL or pointer to previously allocated memory was not found
-    return 0;      // fail
+    return -1;      // fail
 }
