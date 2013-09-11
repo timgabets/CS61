@@ -33,7 +33,7 @@ void m61_getstatistics(struct m61_statistics *stats);
 void m61_printstatistics(void);
 void m61_printleakreport(void);
 void m61_add2list(void* ptr, size_t sz, int status);
-void m61_removefromlist(void* ptr);
+int m61_removefromlist(void* ptr);
 
 #if !M61_DISABLE
 #define malloc(sz)              m61_malloc((sz), __FILE__, __LINE__)

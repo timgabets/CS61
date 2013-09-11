@@ -35,9 +35,10 @@ void m61_free(void *ptr, const char *file, int line)
 {
     (void) file, (void) line;   // avoid uninitialized variable warnings
 
-    m61_removefromlist(ptr);
-
-    free(ptr);
+    if( m61_removefromlist(ptr) )
+        free(ptr);
+    else
+        fprintf( stderr, "MEMORY BUG???: invalid free of pointer %p, not in heap\n", ptr);
 }
 
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
@@ -181,17 +182,25 @@ void m61_printleakreport(void)
 }
 
 // we don't actualy removing items from list, just marking them as INACTIVE
-void m61_removefromlist(void* ptr)
+int m61_removefromlist(void* ptr)
 {
     // running through the linked list to find needed pointer
-    struct list* temp = head;
-
-    while(temp -> address != ptr)
-        if(temp -> next != NULL)
-            temp = temp -> next;
+    if(head != NULL)
+    {
+        struct list* temp = head;
     
-    // at this point we either at the tail or at the needed item:
-    if(temp != NULL)
-        temp -> status = INACTIVE;
+        while(temp -> address != ptr)
+            if(temp -> next != NULL)
+                temp = temp -> next;
+        
+        // at this point we either at the tail or at the needed item:
+        if(temp -> address == ptr)
+        {
+            temp -> status = INACTIVE;
+            return 1;   // success
+        }
+    }
 
+    // either head in NULL or pointer to previously allocated memory was not found
+    return 0;      // fail
 }
