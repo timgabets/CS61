@@ -6,6 +6,12 @@
 #define ACTIVE 1
 #define FAILED 2
 
+#define SUCCESS 1
+#define FAIL 0
+#define INVLDFREE -1
+#define NOTINHEAP -2
+#define NOTALLOC -3
+
 void *m61_malloc(size_t sz, const char *file, int line);
 void m61_free(void *ptr, const char *file, int line);
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line);
@@ -25,8 +31,8 @@ struct list
 	void* 			address;	// pointer to allocated memory 
 	int 			status;		// 0 is inactive, 1 is active, 2 is failed
 	size_t 			size;		// size of allocated memory
+    struct list*    prev;
 	struct list* 	next;		// next item in the list
-
 };
 
 void m61_getstatistics(struct m61_statistics *stats);

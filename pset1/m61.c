@@ -40,11 +40,14 @@ void m61_free(void *ptr, const char *file, int line)
     if(rmstatus == 1)
         free(ptr);
     
-    if(rmstatus == -1) 
+    if(rmstatus == NOTINHEAP) 
         fprintf( stderr, "MEMORY BUG???: invalid free of pointer %p, not in heap\n", ptr);
 
-    if(rmstatus == -2)
+    if(rmstatus == INVLDFREE)
         fprintf(stderr, "MEMORY BUG???: invalid free of pointer %p\n", ptr);
+
+    if(rmstatus == NOTALLOC)
+        fprintf(stderr, "MEMORY BUG???: invalid free of pointer %p, not allocated\n", ptr);
 }
 
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
@@ -156,7 +159,7 @@ void m61_printleakreport(void)
 }
 
 // adding items to the list
- int m61_add2list(void* ptr, size_t sz, int status)
+int m61_add2list(void* ptr, size_t sz, int status)
  {
    
     if(head != NULL)
@@ -173,9 +176,10 @@ void m61_printleakreport(void)
         tail -> address = ptr;
         tail -> size = sz;
         tail -> status = status;
+        tail -> prev = temp;
         tail -> next = NULL;       
 
-        return 1;   // success
+        return SUCCESS;   // success
     }
     else
     {
@@ -184,37 +188,52 @@ void m61_printleakreport(void)
         head -> size = sz;
         head -> status = status;
         head -> next = NULL;
+        head -> prev = NULL;
 
-        return 1; // success
+        return SUCCESS; // success
     }       
 }
 
 // we don't actualy removing items from list, just marking them as INACTIVE
+/*
+ * FAILED and INACTIVE items will be removed from the list.    
+
+*/
 int m61_removefromlist(void* ptr)
 {
     // running through the linked list to find needed pointer
     if(head != NULL)
     {
         struct list* temp = head;
+        while(temp -> next != NULL)
+        {
+            if(temp -> address == ptr)
+                break;
+            temp = temp -> next;
+        }
     
-        while(temp -> address != ptr)
-            if(temp -> next != NULL)
-                temp = temp -> next;
-        
         // at this point we either at the tail or at the needed item:
         if(temp -> address == ptr)
         {
             if(temp -> status == ACTIVE)
+            {
+                // TODO: removing from the list
                 temp -> status = INACTIVE;
+                return SUCCESS;
+            }
             else    // memory was already freed
             {
-                return -2;  // MEMORY BUG???: invalid free of pointer ???
+                return INVLDFREE;  // MEMORY BUG???: invalid free of pointer ???
             }
-
-            return 1;   // success
+        }else
+        {
+            return NOTALLOC;
         }
+        
     }
-
-    // either head in NULL or pointer to previously allocated memory was not found
-    return -1;      // fail
+    else // no memory was allocated 
+    {
+        // TODO: checking the type of the poiner - is it from heap or from stack.
+        return NOTINHEAP;     // MEMORY BUG???: invalid free of pointer ???, not allocated
+    }
 }
