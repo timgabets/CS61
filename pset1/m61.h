@@ -2,10 +2,12 @@
 #define M61_H 1
 #include <stdlib.h>
 
+// memory status:
 #define INACTIVE 0
 #define ACTIVE 1
 #define FAILED 2
 
+// memory free return statuses:
 #define SUCCESS 1
 #define FAIL 0
 #define INVLDFREE -1
