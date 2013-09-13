@@ -41,13 +41,13 @@ void m61_free(void *ptr, const char *file, int line)
         free(ptr);
     
     if(rmstatus == NOTINHEAP) 
-        fprintf( stderr, "MEMORY BUG???: invalid free of pointer %p, not in heap\n", ptr);
+        fprintf( stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
 
     if(rmstatus == INVLDFREE)
-        fprintf(stderr, "MEMORY BUG???: invalid free of pointer %p\n", ptr);
+        fprintf(stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p\n", file, line, ptr);
 
     if(rmstatus == NOTALLOC)
-        fprintf(stderr, "MEMORY BUG???: invalid free of pointer %p, not allocated\n", ptr);
+        fprintf(stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n", file, line, ptr);
 }
 
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
