@@ -15,6 +15,27 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+// memory status:
+#define INACTIVE 0
+#define ACTIVE 1
+#define FAILED 2
+
+// memory free return statuses:
+#define SUCCESS 1
+#define FAIL 0
+#define INVLDFREE -1
+#define NOTINHEAP -2
+#define NOTALLOC -3
+
+struct list 
+{
+    void*           address;    // pointer to allocated memory 
+    int             status;     // 0 is inactive, 1 is active, 2 is failed
+    size_t          size;       // size of allocated memory
+    struct list*    prev;       // previous item in the list
+    struct list*    next;       // next item in the list
+};
+
 struct list* head = NULL;
 
 void *m61_malloc(size_t sz, const char *file, int line) 

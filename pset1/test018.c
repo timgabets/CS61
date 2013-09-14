@@ -6,7 +6,7 @@
 
 int main() {
     int *ptr = (int *) malloc(sizeof(int) * 10);
-    for (int i = 0; i <= 10 /* Whoops! Should be < */; ++i)
+    for (int i = 0; i <= 10 /* Whoops! Should be < */; i++)
         ptr[i] = i;
     free(ptr);
     m61_printstatistics();
