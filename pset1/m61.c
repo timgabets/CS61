@@ -33,12 +33,14 @@ struct list
     void*           address;    // pointer to allocated memory 
     int             status;     // 0 is inactive, 1 is active, 2 is failed
     size_t          size;       // size of allocated memory
+    char            file[32];   // file
+    int             line;       // line in a file
     struct list*    next;       // next item in the list
 };
 
 static struct list* head = NULL;
 
-int m61_add2list(void* ptr, size_t sz, int status);
+int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line);
 int m61_removefromlist(void* ptr);
 size_t m61_getsize(void* ptr);
 
@@ -65,9 +67,9 @@ void *m61_malloc(size_t sz, const char *file, int line)
     }
 
     if(ptr != NULL)
-        m61_add2list(ptr, sz, ACTIVE);
+        m61_add2list(ptr, sz, ACTIVE, file, line);
     else
-        m61_add2list(ptr, sz, FAILED);
+        m61_add2list(ptr, sz, FAILED, file, line);
 
     return ptr;
 }
@@ -160,16 +162,6 @@ void m61_getstatistics(struct m61_statistics* stats)
         struct list* temp = head;
 
         do{
-            /* A simple remainder:
-            struct m61_statistics {
-                unsigned long long nactive;         // # active allocations
-                unsigned long long active_size;     // # bytes in active allocations
-                unsigned long long ntotal;          // # total allocations
-                unsigned long long total_size;      // # bytes in total allocations
-                unsigned long long nfail;           // # failed allocation attempts
-                unsigned long long fail_size;       // # bytes in failed alloc attempts
-                };
-            */
             if(temp -> status == ACTIVE)
             {
                 stats -> nactive++;    
@@ -209,12 +201,26 @@ void m61_printstatistics(void)
 
 void m61_printleakreport(void) 
 {
-    // Your code here.
+    // TODO: Your code here.
+
+    if(head != NULL)
+    {
+        struct list* temp = head;
+        
+        // running through the linked list
+        while(temp -> next != NULL)
+        {
+            if(temp -> status == ACTIVE)
+                printf("LEAK CHECK: %s:%d: allocated object %p with size %lu\n", temp -> file, temp -> line, temp -> address, temp -> size);
+
+            temp = temp -> next;
+        }
+    }
 }
 
 // adding items to the list
-int m61_add2list(void* ptr, size_t sz, int status)
- {
+int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
+{
    
     if(head != NULL)
     {
@@ -230,6 +236,8 @@ int m61_add2list(void* ptr, size_t sz, int status)
         tail -> address = ptr;
         tail -> size = sz;
         tail -> status = status;
+        strncpy(tail -> file, file, 32);
+        tail -> line = line;
         tail -> next = NULL;       
 
         return SUCCESS;   // success
@@ -240,6 +248,8 @@ int m61_add2list(void* ptr, size_t sz, int status)
         head -> address = ptr;
         head -> size = sz;
         head -> status = status;
+        strncpy(head -> file, file, 32);
+        head -> line = line;
         head -> next = NULL;
 
         return SUCCESS; // success
@@ -247,10 +257,6 @@ int m61_add2list(void* ptr, size_t sz, int status)
 }
 
 // we don't actualy removing items from list, just marking them as INACTIVE
-/*
- * FAILED and INACTIVE items will be removed from the list.    
-
-*/
 int m61_removefromlist(void* ptr)
 {
     // running through the linked list to find needed pointer
