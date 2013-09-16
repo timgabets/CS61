@@ -33,11 +33,10 @@ struct list
     void*           address;    // pointer to allocated memory 
     int             status;     // 0 is inactive, 1 is active, 2 is failed
     size_t          size;       // size of allocated memory
-    struct list*    prev;       // previous item in the list
     struct list*    next;       // next item in the list
 };
 
-struct list* head = NULL;
+static struct list* head = NULL;
 
 int m61_add2list(void* ptr, size_t sz, int status);
 int m61_removefromlist(void* ptr);
@@ -50,7 +49,8 @@ void *m61_malloc(size_t sz, const char *file, int line)
 
     // we suppose that size_t is unsigned long
     if( sz < ( ULONG_MAX - 2 ) ) 
-        ptr = malloc(sz + 2);     // allocating 2 more butes for boundary access detection
+        ptr = malloc(sz + 30);      // allocating some more butes for boundary access detection
+                                    // by the way, only 2 bytes will be used for checking.                  
     else
         ptr = NULL;               
 
@@ -230,7 +230,6 @@ int m61_add2list(void* ptr, size_t sz, int status)
         tail -> address = ptr;
         tail -> size = sz;
         tail -> status = status;
-        tail -> prev = temp;
         tail -> next = NULL;       
 
         return SUCCESS;   // success
@@ -242,7 +241,6 @@ int m61_add2list(void* ptr, size_t sz, int status)
         head -> size = sz;
         head -> status = status;
         head -> next = NULL;
-        head -> prev = NULL;
 
         return SUCCESS; // success
     }       
