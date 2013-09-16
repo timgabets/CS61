@@ -294,13 +294,18 @@ int m61_removefromlist(void* ptr)
 
 size_t m61_getsize(void* ptr)
 {
-    struct list* temp = head;
-    while(temp -> next != NULL)
+    if(ptr != NULL && head != NULL)
     {
-        if(temp -> address == ptr)
-            break;
-        temp = temp -> next;
+        struct list* temp = head;
+        while(temp -> next != NULL)
+        {
+            if(temp -> address == ptr)
+                break;
+            temp = temp -> next;
+        }
+    
+        return temp -> size;
     }
-
-    return temp -> size;
+    else 
+        return 0;
 }
