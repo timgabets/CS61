@@ -14,6 +14,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <limits.h>
 
 // memory status:
 #define INACTIVE 0
@@ -38,11 +39,30 @@ struct list
 
 struct list* head = NULL;
 
+int m61_add2list(void* ptr, size_t sz, int status);
+int m61_removefromlist(void* ptr);
+size_t m61_getsize(void* ptr);
+
 void *m61_malloc(size_t sz, const char *file, int line) 
 {
     (void) file, (void) line;   // avoid uninitialized variable warnings
+    char* ptr;
 
-    void* ptr = malloc(sz);
+    // we suppose that size_t is unsigned long
+    if( sz < ( ULONG_MAX - 2 ) ) 
+        ptr = malloc(sz + 2);     // allocating 2 more butes for boundary access detection
+    else
+        ptr = NULL;               
+
+    // two additional bytes will contain 0x4c value. After freeing the memory, these bytes
+    // will be checked again. If these bytes contain some other data, it means thah
+    //  boundary write error had happened.
+    if(ptr != NULL)
+    {
+        char* temp = (char*) ptr;
+        temp[sz] = 0x4c;
+        temp[sz + 1] = 0x4c;
+    }
 
     if(ptr != NULL)
         m61_add2list(ptr, sz, ACTIVE);
@@ -56,10 +76,20 @@ void m61_free(void *ptr, const char *file, int line)
 {
     (void) file, (void) line;   // avoid uninitialized variable warnings
 
+    size_t sz = m61_getsize(ptr);
     int rmstatus = m61_removefromlist(ptr);
 
     if(rmstatus == SUCCESS)
-        free(ptr);
+    {
+        char* temp = (char*) ptr;
+        // detecting boundary write:
+        if( temp[sz] == 0x4c && temp[sz + 1] == 0x4c)
+        {
+            free(ptr);
+        }
+        else    // memory was written beyond the actual dimensions of an allocated memory block.
+            fprintf( stderr, "MEMORY BUG: %s:%d: detected wild write during free of pointer %p\n", file, line, ptr);
+    }
     else    
     {
         if(rmstatus == NOTINHEAP) 
@@ -260,4 +290,17 @@ int m61_removefromlist(void* ptr)
         // TODO: checking the type of the poiner - is it from heap or from stack.
         return NOTINHEAP;     // MEMORY BUG???: invalid free of pointer ???, not allocated
     }
+}
+
+size_t m61_getsize(void* ptr)
+{
+    struct list* temp = head;
+    while(temp -> next != NULL)
+    {
+        if(temp -> address == ptr)
+            break;
+        temp = temp -> next;
+    }
+
+    return temp -> size;
 }
