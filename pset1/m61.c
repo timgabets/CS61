@@ -137,6 +137,7 @@ void *m61_realloc(void *ptr, size_t sz, const char *file, int line)
     return new_ptr;
 }
 
+//
 void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) 
 {
     // Your code here (to fix test010).
@@ -146,6 +147,7 @@ void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line)
     return ptr;
 }
 
+//
 void m61_getstatistics(struct m61_statistics* stats)
 {
     
@@ -188,6 +190,7 @@ void m61_getstatistics(struct m61_statistics* stats)
     }    
 }
 
+//
 void m61_printstatistics(void) 
 {
     struct m61_statistics stats;
@@ -199,6 +202,7 @@ void m61_printstatistics(void)
            stats.active_size, stats.total_size, stats.fail_size);
 }
 
+// 
 void m61_printleakreport(void) 
 {
     // TODO: Your code here.
@@ -208,7 +212,7 @@ void m61_printleakreport(void)
         struct list* temp = head;
         
         // running through the linked list
-        while(temp -> next != NULL)
+        while(temp != NULL)
         {
             if(temp -> status == ACTIVE)
                 printf("LEAK CHECK: %s:%d: allocated object %p with size %lu\n", temp -> file, temp -> line, temp -> address, temp -> size);
