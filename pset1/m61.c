@@ -39,11 +39,12 @@ struct list
     struct list*    next;       // next item in the list
 };
 
-static struct list* head = NULL;
+struct list* head = NULL;
 
 int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line);
 int m61_removefromlist(void* ptr);
 size_t m61_getsize(void* ptr);
+struct list* m61_getmetadata(void* ptr);
 
 void *m61_malloc(size_t sz, const char *file, int line) 
 {
@@ -84,9 +85,9 @@ void m61_free(void *ptr, const char *file, int line)
 
     if(rmstatus == SUCCESS)
     {
-        char* temp = (char*) ptr;
+        char* check = (char*) ptr;
         // detecting boundary write:
-        if( temp[sz] == 0x4c && temp[sz + 1] == 0x4c)
+        if( check[sz] == 0x4c && check[sz + 1] == 0x4c)
         {
             free(ptr);
         }
@@ -107,7 +108,10 @@ void m61_free(void *ptr, const char *file, int line)
         if(rmstatus == INSIDENOTALLOCD)
         {
             fprintf(stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n", file, line, ptr);
-            fprintf(stderr, "  %s:%d: %p is 100 bytes inside a 2001 byte region allocated here\n", file, line - 1, ptr);
+            // TODO: return proper values:
+            struct list* temp = m61_getmetadata(ptr);
+            if(temp != NULL)
+                fprintf(stderr, "  %s:%d: %p is 100 bytes inside a %lu byte region allocated here\n", temp -> file, temp -> line, temp -> address, temp -> size);
         }
     }
 
@@ -310,15 +314,33 @@ size_t m61_getsize(void* ptr)
     if(ptr != NULL && head != NULL)
     {
         struct list* temp = head;
-        while(temp -> next != NULL)
+        while(temp != NULL)
         {
             if(temp -> address == ptr)
-                break;
+                return temp -> size;
+
             temp = temp -> next;
         }
     
-        return temp -> size;
     }
-    else 
+
         return 0;
+}
+
+struct list* m61_getmetadata(void* ptr)
+{
+    struct list* temp = head;
+
+    if(head != NULL)
+    {
+        while(temp != NULL)
+        {
+            if(ptr > temp -> address && ptr <= ((temp -> address) + (temp -> size)) )
+                return temp;
+
+            temp = temp -> next;
+        }
+    }
+
+    return NULL;
 }
