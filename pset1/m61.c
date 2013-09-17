@@ -27,6 +27,7 @@
 #define INVLDFREE -1
 #define NOTINHEAP -2
 #define NOTALLOC -3
+#define INSIDENOTALLOCD -4
 
 struct list 
 {
@@ -102,6 +103,12 @@ void m61_free(void *ptr, const char *file, int line)
     
         if(rmstatus == NOTALLOC)
             fprintf(stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n", file, line, ptr);
+
+        if(rmstatus == INSIDENOTALLOCD)
+        {
+            fprintf(stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n", file, line, ptr);
+            fprintf(stderr, "  %s:%d: %p is 100 bytes inside a 2001 byte region allocated here\n", file, line - 1, ptr);
+        }
     }
 
 }
@@ -267,37 +274,35 @@ int m61_removefromlist(void* ptr)
     if(head != NULL)
     {
         struct list* temp = head;
-        while(temp -> next != NULL)
+
+        while(temp != NULL)
         {
+            if(ptr > temp -> address && ptr <= ((temp -> address) + (temp -> size)) )
+                return INSIDENOTALLOCD;
+
             if(temp -> address == ptr)
-                break;
+            {
+                if(temp -> status == ACTIVE)
+                {
+                    temp -> status = INACTIVE;
+                    temp -> address = NULL;
+                    return SUCCESS;
+                }
+                else    // memory was already freed
+                    return INVLDFREE;  // MEMORY BUG???: invalid free of pointer ???
+                
+            }
+    
             temp = temp -> next;
         }
     
-        // at this point we either at the tail or at the needed item:
-        if(temp -> address == ptr)
-        {
-            if(temp -> status == ACTIVE)
-            {
-                temp -> status = INACTIVE;
-                temp -> address = NULL;
-                return SUCCESS;
-            }
-            else    // memory was already freed
-            {
-                return INVLDFREE;  // MEMORY BUG???: invalid free of pointer ???
-            }
-        }else
-        {
-            return NOTALLOC;
-        }
-        
+        // at this point we either at the tail or at the needed item:      
     }
     else // no memory was allocated 
-    {
-        // TODO: checking the type of the poiner - is it from heap or from stack.
         return NOTINHEAP;     // MEMORY BUG???: invalid free of pointer ???, not allocated
-    }
+    
+
+    return NOTALLOC;
 }
 
 size_t m61_getsize(void* ptr)
