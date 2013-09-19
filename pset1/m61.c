@@ -1,12 +1,12 @@
-/*
-    CS61 Problem Set1. Debugging memory allocation.
-
-    The task is to write a debugging malloc library that helps track and debug memory usage, 
-    and that catches memory errors in our handout programs (and other programs).
-
-    Tim Gabets <gabets@g.harvard.edu>
-    September 2013
-*/
+/**
+ *  CS61 Problem Set1. Debugging memory allocation.
+ *  
+ *  The task is to write a debugging malloc library that helps track and debug memory usage, 
+ *  and that catches memory errors in our handout programs (and other programs).
+ *  
+ *   Tim Gabets <gabets@g.harvard.edu>
+ *   September 2013
+ */
 
 #define M61_DISABLE 1
 #include "m61.h"
@@ -16,7 +16,7 @@
 #include <inttypes.h>
 #include <limits.h>
 
-// memory status:
+// allocated memory statuses:
 #define INACTIVE 0
 #define ACTIVE 1
 #define FAILED 2
@@ -29,8 +29,13 @@
 #define NOTALLOC -3
 #define INSIDENOTALLOCD -4
 
-const int testvar;
-
+/**
+ * We use linked list to save pointer metadata, which is not really a great idea,
+ * because memory for this linked list is allocating from the heap, like the 
+ * usual user data. It means that data and metadata are mixed up in the heap. 
+ * It works fine in 99% of cases, but sometimes user can smartly overwrite 
+ * this metadata (like in test026 ), and then a really bad thing can happen.
+ */
 struct list 
 {
     void*           address;    // pointer to allocated memory 
@@ -49,35 +54,36 @@ size_t m61_getsize(void* ptr);
 struct list* m61_getmetadata(void* ptr);
 
 
-// allocating memory
+/**
+ * Allocating memory
+ */
 void *m61_malloc(size_t sz, const char *file, int line) 
 {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     char* ptr;
 
-    // we suppose that size_t is unsigned long
-    /*
-        Where does these 200 bytes come from? It is a hat trick 
-        to pass the test026 (that is very specific I think).
-        By the way, only 2 bytes will be used for checking. 
-    */
+    /**
+     * Where does these 200 bytes come from? It is a hat trick
+     * to pass the test026 (that is very specific I think).
+     * By the way, only 2 bytes will be used for checking. 
+     */
     if( sz < ( ULONG_MAX - 200 ) )   
-        ptr = malloc(sz + 200);      // allocating some more butes for boundary access detection                                
+        ptr = malloc(sz + 200);                              
     else
         ptr = NULL;               
 
-    // two additional bytes will contain 0x4c value. After freeing the memory, these bytes
-    // will be checked again. If these bytes contain some other data, it means thah
-    //  boundary write error had happened.
+    /**
+     * Two additional bytes will contain 0x4c value. After freeing the memory, these bytes
+     * will be checked again. If these bytes contain some other data, it means that
+     * boundary write error had happened.
+     */
     if(ptr != NULL)
     {
         char* temp = (char*) ptr;
         temp[sz] = 0x4c;
         temp[sz + 1] = 0x4c;
-    }
-
-    if(ptr != NULL)
         m61_add2list(ptr, sz, ACTIVE, file, line);
+    }
     else
         m61_add2list(ptr, sz, FAILED, file, line);
 
@@ -85,7 +91,9 @@ void *m61_malloc(size_t sz, const char *file, int line)
 }
 
 
-// freeing the memory
+/**
+ * Freeing the memory
+ */
 void m61_free(void *ptr, const char *file, int line) 
 {
     (void) file, (void) line;   // avoid uninitialized variable warnings
@@ -96,6 +104,7 @@ void m61_free(void *ptr, const char *file, int line)
     if(rmstatus == SUCCESS)
     {
         char* check = (char*) ptr;
+        
         // detecting boundary write:
         if( check[sz] == 0x4c && check[sz + 1] == 0x4c)
         {
@@ -118,17 +127,18 @@ void m61_free(void *ptr, const char *file, int line)
         if(rmstatus == INSIDENOTALLOCD)
         {
             fprintf(stderr, "MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n", file, line, ptr);
-            // TODO: return proper values:
             struct list* temp = m61_getmetadata(ptr);
             if(temp != NULL)
-                fprintf(stderr, "  %s:%d: %p is 100 bytes inside a %lu byte region allocated here\n", temp -> file, temp -> line, temp -> address, temp -> size);
+                fprintf(stderr, "  %s:%d: %p is %lu bytes inside a %lu byte region allocated here\n", 
+                    temp -> file, temp -> line, ptr, (char*) ptr - (char*) ( temp -> address ), temp -> size);
         }
     }
-
 }
 
 
-// changing the size of the allocated memory block
+/**
+ *  Changing the size of the allocated memory block
+ */
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
 {
     void *new_ptr = NULL;
@@ -161,7 +171,9 @@ void *m61_realloc(void *ptr, size_t sz, const char *file, int line)
 }
 
 
-// returning a chunk of memory, that is set to zero
+/**
+ * Returning a chunk of memory, that is set to zero
+ */
 void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) 
 {
     void *ptr = m61_malloc(nmemb * sz, file, line);
@@ -171,7 +183,9 @@ void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line)
 }
 
 
-// retrieving statistics from data structures
+/** 
+ * Retrieving statistics from data structures
+ */
 void m61_getstatistics(struct m61_statistics* stats)
 {
     
@@ -215,7 +229,9 @@ void m61_getstatistics(struct m61_statistics* stats)
 }
 
 
-// printing statistics
+/**
+ * Printing statistics
+ */
 void m61_printstatistics(void) 
 {
     struct m61_statistics stats;
@@ -228,14 +244,15 @@ void m61_printstatistics(void)
 }
 
 
-// printing leak report
+/**
+ * Printing leak report
+ */
 void m61_printleakreport(void) 
 {
     if(head != NULL)
     {
         struct list* temp = head;
         
-        // running through the linked list
         while(temp != NULL)
         {
             if(temp -> status == ACTIVE)
@@ -247,7 +264,9 @@ void m61_printleakreport(void)
 }
 
 
-// adding items to the list
+/**
+ * Adding items to the list
+ */
 int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
 {
    
@@ -258,7 +277,6 @@ int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
         while(temp -> next != NULL)
             temp = temp -> next;
       
-        // at this point temp is tail (the last item in the list)
         struct list* tail = malloc( sizeof(struct list) );
 
         temp -> next = tail;
@@ -269,7 +287,7 @@ int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
         tail -> line = line;
         tail -> next = NULL;       
 
-        return SUCCESS;   // success
+        return SUCCESS;
     }
     else
     {
@@ -282,12 +300,15 @@ int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
         head -> line = line;
         head -> next = NULL;
 
-        return SUCCESS; // success
+        return SUCCESS;
     }       
 }
 
-// 'removing' items from the list (well, we don't actualy removing these items 
-// from list, just marking them as INACTIVE)
+
+/**
+ * 'Removing' items from the list (well, we don't actualy removing these items
+ * from list, just marking them as INACTIVE)
+ */
 int m61_removefromlist(void* ptr)
 {
     if(head != NULL)
@@ -301,7 +322,6 @@ int m61_removefromlist(void* ptr)
 
             if(temp -> address == ptr)
             {
-                // TODO: checking the write boundary:
                 if(temp -> status == ACTIVE)
                 {
                     temp -> status = INACTIVE;
@@ -314,14 +334,16 @@ int m61_removefromlist(void* ptr)
             temp = temp -> next;
         }
     }
-    else // no memory was allocated 
+    else 
         return NOTINHEAP;     // MEMORY BUG???: invalid free of pointer ???, not allocated
     
-    return NOTALLOC;
+    return NOTALLOC;  // no memory was allocated 
 }
 
 
-// getting size of allocated memory
+/**
+ * Getting size of allocated memory
+ */
 size_t m61_getsize(void* ptr)
 {
     if(ptr != NULL && head != NULL)
@@ -329,20 +351,19 @@ size_t m61_getsize(void* ptr)
         struct list* temp = head;
         while(temp != NULL)
         {
-            // TODO: checking does allocated memory active or already freed
             if(temp -> address == ptr && temp -> status == ACTIVE)
                 return temp -> size;
 
             temp = temp -> next;
         }
-    
     }
-
         return 0;
 }
 
 
-// geting pointer metadata
+/*
+ *    Getting pointer metadata
+ */
 struct list* m61_getmetadata(void* ptr)
 {
     struct list* temp = head;
