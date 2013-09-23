@@ -1,10 +1,27 @@
+/*
+    CS61 Problem Set1. Heavy hitter reports.
+
+    A sample framework for evaluating heavy hitter reports.
+
+    Tim Gabets <gabets@g.harvard.edu>
+    September 2013
+*/
 #include "m61.h"
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
 #define NALLOCATORS 40
-// hhtest: A sample framework for evaluating heavy hitter reports.
+
+typedef struct ptrdata{
+    unsigned long   size;      // size of allocated memory
+    unsigned long   count;    // number of requested allocations
+}ptrdata;
+
+unsigned long long overall_size; // size of all allocations
+unsigned long long overall_count; // number of all requested allocations
+
+ptrdata metadata[NALLOCATORS];
 
 // 40 different allocation functions give 40 different call sites
 void f00(size_t sz) { void *ptr = malloc(sz); free(ptr); }
@@ -91,8 +108,39 @@ static void phase(double skew, unsigned long long count) {
         int r = 0;
         while (r < NALLOCATORS - 1 && x > limit[r])
             ++r;
+        // allocating:
         allocators[r](sizes[r]);
+
+        // counting:
+        metadata[r].size += sizes[r];
+        metadata[r].count++;
+        overall_size += sizes[r];
+        overall_count++;
+
     }
+}
+
+/**
+ * Initizling metadata array
+ */
+void hh_initmetadata(void)
+{
+    for(int i = 0; i < NALLOCATORS; i++)
+    {
+        metadata[i].size = 0;
+        metadata[i].count = 0;
+    }
+    overall_size = 0;
+    overall_count = 0;
+}
+
+/**
+ * Printing allocated memory statistics
+ */
+void hh_printstats()
+{
+    for(int i = 0; i < NALLOCATORS; i++)
+        printf("%i\t%lu\t%lu\n", i, metadata[i].count, metadata[i].size);
 }
 
 int main(int argc, char **argv) {
@@ -114,17 +162,22 @@ int main(int argc, char **argv) {
         exit(0);
     }
 
+    hh_initmetadata();
+
     // parse arguments and run phases
     for (int position = 1; position == 1 || position < argc; position += 2) {
         double skew = 0;
         if (position < argc)
             skew = strtod(argv[position], 0);
 
-        unsigned long long count = 1000000;
+//        unsigned long long count = 1000000;
+        unsigned long long count = 10000;
         if (position + 1 < argc)
             count = strtoull(argv[position + 1], 0, 0);
 
         phase(skew, count);
     }
+
+    hh_printstats();
 
 }
