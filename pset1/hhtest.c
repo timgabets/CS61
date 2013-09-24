@@ -1,15 +1,20 @@
-/*
-    CS61 Problem Set1. Heavy hitter reports.
+/**
+ *  CS61 Problem Set1. Heavy hitter reports.
+ *  
+ *  A sample framework for evaluating heavy hitter reports.
+ *  
+ *  The most important rule: If a program makes lots of allocations, and a single line of code
+ *  is responsible for 20% or more of the total bytes allocated by a program, then the heavy-hitter 
+ *  report should mention that line of code (possibly among others).
+ *  
+ *  TODO: 
+ *      * printing filename and a line in report
+ *      * running a percent rate while allocating memory
+ *      
+ *  Tim Gabets <gabets@g.harvard.edu>
+ *  September 2013
+ */
 
-    A sample framework for evaluating heavy hitter reports.
-
-    The most important rule: If a program makes lots of allocations, and a single line of code 
-    is responsible for 20% or more of the total bytes allocated by a program, then the heavy-hitter 
-    report should mention that line of code (possibly among others).
-
-    Tim Gabets <gabets@g.harvard.edu>
-    September 2013
-*/
 #include "m61.h"
 #include <stdlib.h>
 #include <math.h>
@@ -17,11 +22,11 @@
 #include <stdio.h>
 #define NALLOCATORS 40
 
-unsigned long long count = 10000;     // number of allocations
+unsigned long long count = 100000;     // number of allocations
 
-unsigned long overall_size;             // size of all allocations
-unsigned long memsize[NALLOCATORS];     // size of memory, allocated by every function
-unsigned long memcounters[NALLOCATORS]; // number of allocations requested by every function
+unsigned long long overall_size;             // size of all allocations
+unsigned long long memsize[NALLOCATORS];     // size of memory, allocated by every function
+unsigned long long memcounters[NALLOCATORS]; // number of allocations requested by every function
 
 // 40 different allocation functions give 40 different call sites
 void f00(size_t sz) { void *ptr = malloc(sz); free(ptr); }
@@ -81,6 +86,40 @@ size_t sizes[NALLOCATORS] = {
     128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536
 };
 
+/**
+ * [loadBar Printing a progress bar with ASCII codes]
+ * @param x [the current index we are on]
+ * @param n [the number of indicies to process]
+ * @param r [the number of times we want to update the display (doing it every time will cause programs with large n to slow down majorly)]
+ * @param width [the width of the bar]
+ *
+ * Thanks to Ross Hemsley for this implementation 
+ * http://www.rosshemsley.co.uk/2011/02/creating-a-progress-bar-in-c-or-any-other-console-app/
+ */
+static inline void loadBar(int x, int n, int r, int width)
+{
+    // Only update r times.
+    if ( x % (n / r) != 0 ) return;
+ 
+    // Calculuate the ratio of complete-to-incomplete.
+    float ratio = x / (float) n;
+    int c = ratio * width;
+ 
+    // Show the percentage complete.
+    printf("%3d%% [", (int)(ratio*100) );
+ 
+    // Show the load bar.
+    for (int x = 0; x < c; x++)
+       printf("=");
+ 
+    for (int x = c; x < width; x++)
+       printf(" ");
+ 
+    // ANSI Control codes to go back to the
+    // previous line and clear it.
+    printf("]\n\033[F\033[J");
+}
+
 static void phase(double skew, unsigned long long count) {
     // Calculate the probability we'll call allocator I.
     // That probability equals  2^(-I*skew) / \sum_{i=0}^40 2^(-I*skew).
@@ -117,6 +156,7 @@ static void phase(double skew, unsigned long long count) {
         overall_size += sizes[r];
 
         // TODO: running percent rate
+        loadBar(i, count, 100, 40);
     }
 }
 
@@ -147,14 +187,15 @@ void hh_printstats(void)
         sizerate = 100.0 * memsize[i] / overall_size;
         countrate = 100.0 * memcounters[i] / count;
         if(sizerate >= 20)
-            printf("HEAVY HITTER: function %i: %lu bytes (~%.1f%%)\n", i, memsize[i], sizerate);
+            printf("HEAVY HITTER: function %i: %lld bytes (~%.1f%%)\n", i, memsize[i], sizerate);
 
         if(countrate >= 20)
-            printf("HEAVY HITTER: function %i: %lu of %lu allocations (~%.1f%%)\n", i, memcounters[i], (unsigned long) count, countrate);
+            printf("HEAVY HITTER: function %i: %lld of %lld allocations (~%.1f%%)\n", i, memcounters[i], count, countrate);
     }
 
-    printf("Overall memory allocated: %lu bytes\n", overall_size);
+    printf("Overall memory allocated: %lld bytes\n", overall_size);
 }
+
 
 int main(int argc, char **argv) {
     if (argc > 1 && (strcmp(argv[1], "-h") == 0
