@@ -3,6 +3,10 @@
 
     A sample framework for evaluating heavy hitter reports.
 
+    The most important rule: If a program makes lots of allocations, and a single line of code 
+    is responsible for 20% or more of the total bytes allocated by a program, then the heavy-hitter 
+    report should mention that line of code (possibly among others).
+
     Tim Gabets <gabets@g.harvard.edu>
     September 2013
 */
@@ -13,9 +17,11 @@
 #include <stdio.h>
 #define NALLOCATORS 40
 
+unsigned long long count = 10000;     // number of allocations
+
 unsigned long overall_size;             // size of all allocations
-unsigned long overall_count;            // number of all requested allocations
-unsigned long memsize[NALLOCATORS];     // counter of memory, allocated by every function
+unsigned long memsize[NALLOCATORS];     // size of memory, allocated by every function
+unsigned long memcounters[NALLOCATORS]; // number of allocations requested by every function
 
 // 40 different allocation functions give 40 different call sites
 void f00(size_t sz) { void *ptr = malloc(sz); free(ptr); }
@@ -107,7 +113,10 @@ static void phase(double skew, unsigned long long count) {
 
         // counting:
         memsize[r] += sizes[r];
+        memcounters[r]++;
         overall_size += sizes[r];
+
+        // TODO: running percent rate
     }
 }
 
@@ -117,7 +126,10 @@ static void phase(double skew, unsigned long long count) {
 void hh_initcounters(void)
 {
     for(int i = 0; i < NALLOCATORS; i++)
+    {
         memsize[i] = 0;
+        memcounters[i] = 0;
+    }
 
     overall_size = 0;
 }
@@ -126,13 +138,19 @@ void hh_initcounters(void)
  * Printing allocated memory statistics
  */
 void hh_printstats(void)
-{
-    float rate;
+{   
+    float sizerate;
+    float countrate;
 
     for(int i = 0; i < NALLOCATORS; i++)
     {   
-        rate = 100.0 * memsize[i] / overall_size;
-        printf("HEAVY HITTER: function %i: %lu bytes (~%.1f%%)\n", i, memsize[i], rate);
+        sizerate = 100.0 * memsize[i] / overall_size;
+        countrate = 100.0 * memcounters[i] / count;
+        if(sizerate >= 20)
+            printf("HEAVY HITTER: function %i: %lu bytes (~%.1f%%)\n", i, memsize[i], sizerate);
+
+        if(countrate >= 20)
+            printf("HEAVY HITTER: function %i: %lu of %lu allocations (~%.1f%%)\n", i, memcounters[i], (unsigned long) count, countrate);
     }
 
     printf("Overall memory allocated: %lu bytes\n", overall_size);
@@ -165,7 +183,6 @@ int main(int argc, char **argv) {
         if (position < argc)
             skew = strtod(argv[position], 0);
 
-        unsigned long long count = 1000000;
         //unsigned long long count = 8000;
         if (position + 1 < argc)
             count = strtoull(argv[position + 1], 0, 0);
