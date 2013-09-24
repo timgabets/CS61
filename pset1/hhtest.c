@@ -13,15 +13,9 @@
 #include <stdio.h>
 #define NALLOCATORS 40
 
-typedef struct ptrdata{
-    unsigned long   size;      // size of allocated memory
-    unsigned long   count;    // number of requested allocations
-}ptrdata;
-
-unsigned long long overall_size; // size of all allocations
-unsigned long long overall_count; // number of all requested allocations
-
-ptrdata metadata[NALLOCATORS];
+unsigned long overall_size;             // size of all allocations
+unsigned long overall_count;            // number of all requested allocations
+unsigned long memsize[NALLOCATORS];     // counter of memory, allocated by every function
 
 // 40 different allocation functions give 40 different call sites
 void f00(size_t sz) { void *ptr = malloc(sz); free(ptr); }
@@ -112,35 +106,36 @@ static void phase(double skew, unsigned long long count) {
         allocators[r](sizes[r]);
 
         // counting:
-        metadata[r].size += sizes[r];
-        metadata[r].count++;
+        memsize[r] += sizes[r];
         overall_size += sizes[r];
-        overall_count++;
-
     }
 }
 
 /**
- * Initizling metadata array
+ * Initizling memory allocation counters
  */
-void hh_initmetadata(void)
+void hh_initcounters(void)
 {
     for(int i = 0; i < NALLOCATORS; i++)
-    {
-        metadata[i].size = 0;
-        metadata[i].count = 0;
-    }
+        memsize[i] = 0;
+
     overall_size = 0;
-    overall_count = 0;
 }
 
 /**
  * Printing allocated memory statistics
  */
-void hh_printstats()
+void hh_printstats(void)
 {
+    float rate;
+
     for(int i = 0; i < NALLOCATORS; i++)
-        printf("%i\t%lu\t%lu\n", i, metadata[i].count, metadata[i].size);
+    {   
+        rate = 100.0 * memsize[i] / overall_size;
+        printf("HEAVY HITTER: function %i: %lu bytes (~%.1f%%)\n", i, memsize[i], rate);
+    }
+
+    printf("Overall memory allocated: %lu bytes\n", overall_size);
 }
 
 int main(int argc, char **argv) {
@@ -162,7 +157,7 @@ int main(int argc, char **argv) {
         exit(0);
     }
 
-    hh_initmetadata();
+    hh_initcounters();
 
     // parse arguments and run phases
     for (int position = 1; position == 1 || position < argc; position += 2) {
@@ -170,8 +165,8 @@ int main(int argc, char **argv) {
         if (position < argc)
             skew = strtod(argv[position], 0);
 
-//        unsigned long long count = 1000000;
-        unsigned long long count = 10000;
+        unsigned long long count = 1000000;
+        //unsigned long long count = 8000;
         if (position + 1 < argc)
             count = strtoull(argv[position + 1], 0, 0);
 
