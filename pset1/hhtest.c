@@ -3,9 +3,17 @@
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
-
+#define NALLOCATORS 40
 // hhtest: A sample framework for evaluating heavy hitter reports.
-unsigned long long count = 20000;
+
+// all this should be placed in m61.h:
+extern void loadBar(int i, int num, int step, int width);
+extern void hh_initcounters(void);
+extern void hh_printstats(unsigned long long count);
+
+extern unsigned long long hh_overallsize;             // size of all allocations
+extern unsigned long long hh_memsize[NALLOCATORS];    // size of memory, allocated by every function
+extern unsigned long long hh_counter[NALLOCATORS];    // number of allocations requested by every function
 
 // 40 different allocation functions give 40 different call sites
 void f00(size_t sz) { void *ptr = malloc(sz); free(ptr); }
@@ -100,8 +108,9 @@ static void phase(double skew, unsigned long long count) {
         hh_memsize[r] += sizes[r];
         hh_counter[r]++;
         hh_overallsize += sizes[r];
+        
         // showing load bar:
-        loadBar(i, count, 100, 40);
+        loadBar(i, count, 500, 40);
     }
 }
 
@@ -125,18 +134,20 @@ int main(int argc, char **argv) {
     }
 
     hh_initcounters();
-
+    unsigned long long count = 10000;
+        
     // parse arguments and run phases
     for (int position = 1; position == 1 || position < argc; position += 2) {
         double skew = 0;
         if (position < argc)
             skew = strtod(argv[position], 0);
 
+        //unsigned long long count = 10000;
         if (position + 1 < argc)
             count = strtoull(argv[position + 1], 0, 0);
 
         phase(skew, count);
     }
 
-       hh_printstats(count);
+    hh_printstats(count);
 }

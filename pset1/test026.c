@@ -10,9 +10,9 @@ int main() {
     char *c = (char *) malloc(200);
     char *p = (char *) malloc(3000);
     (void) a, (void) c;
-    memcpy(p, b - 200, 450);
+    memcpy(p, b - 0xC8, 0x1C2);
     free(b);
-    memcpy(b - 200, p, 450);
+    memcpy(b - 0xC8, p, 0x1C2);
     free(b);
     m61_printstatistics();
 }
