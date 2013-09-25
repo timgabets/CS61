@@ -29,30 +29,7 @@
 #define NOTALLOC -3
 #define INSIDENOTALLOCD -4
 
-/**
- * We use linked list to save pointer metadata, which is not really a great idea,
- * because memory for this linked list is allocating from the heap, like the 
- * usual user data. It means that data and metadata are mixed up in the heap. 
- * It works fine in 99% of cases, but sometimes user can smartly overwrite 
- * this metadata (like in test026 ), and then a really bad thing can happen.
- */
-struct list 
-{
-    void*           address;    // pointer to allocated memory 
-    int             status;     // 0 is inactive, 1 is active, 2 is failed
-    size_t          size;       // size of allocated memory
-    char            file[32];   // name of the file, from where allocation requested
-    int             line;       // line in the file
-    struct list*    next;       // next item in the list
-};
-
 struct list* head = NULL;
-
-int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line);
-int m61_removefromlist(void* ptr);
-size_t m61_getsize(void* ptr);
-struct list* m61_getmetadata(void* ptr);
-
 
 /**
  * Allocating memory
@@ -379,4 +356,74 @@ struct list* m61_getmetadata(void* ptr)
         }
     }
     return NULL;
+}
+
+/**
+ * [loadBar Prints a progress bar with ASCII codes]
+ * @param i [the current index we are on]
+ * @param num [the number of indicies to process]
+ * @param r [the number of times we want to update the display (doing it every time will cause programs with large n to slow down majorly)]
+ * @param width [the width of the bar]
+ * 
+ * Thanks to Ross Hemsley for this implementation 
+ * http://www.rosshemsley.co.uk/2011/02/creating-a-progress-bar-in-c-or-any-other-console-app/
+ */
+inline void loadBar(int i, int num, int step, int width)
+{
+    // Only update step times.
+    if ( i % (num / step) != 0 ) return;
+ 
+    // Calculuate the ratio of complete-to-incomplete.
+    float ratio = i / (float) num;
+    int c = ratio * width;
+ 
+    // Show the percentage complete.
+    printf("%3d%% [", (int)(ratio*100) );
+ 
+    // Show the load bar.
+    for (int i = 0; i < c; i++)
+       printf("=");
+ 
+    for (int i = c; i < width; i++)
+       printf(" ");
+ 
+    // ANSI Control codes to go back to the
+    // previous line and clear it.
+    printf("]\n\033[F\033[J");
+}
+
+/**
+ * [hh_initcounters initilizes memory allocation counters for heavy jeater reporter]
+ */
+void hh_initcounters(void)
+{
+    for(int i = 0; i < NALLOCATORS; i++)
+    {
+        hh_memsize[i] = 0;
+        hh_counter[i] = 0;
+    }
+
+    hh_overallsize = 0;
+}
+
+/**
+ * [hh_printstats prints heavy hitter report's statistics]
+ */
+void hh_printstats(unsigned long long count)
+{   
+    float sizerate;
+    float countrate;
+
+    for(int i = 0; i < NALLOCATORS; i++)
+    {   
+        sizerate = 100.0 * hh_memsize[i] / hh_overallsize;
+        countrate = 100.0 * hh_counter[i] / count;
+        if(sizerate >= 20)
+            printf("HEAVY HITTER: function %i: %lld bytes (~%.1f%%)\n", i, hh_memsize[i], sizerate);
+
+        if(countrate >= 20)
+            printf("HEAVY HITTER: function %i: %lld of %lld allocations (~%.1f%%)\n", i, hh_counter[i], count, countrate);
+    }
+
+    printf("Overall memory allocated: %lld bytes\n", hh_overallsize);
 }
