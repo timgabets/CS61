@@ -66,9 +66,8 @@ extern void loadBar(int i, int num, int step, int width);
 extern void hh_initcounters(void);
 extern void hh_printstats(unsigned long long count);
 
-/**
- * heavy heater report-related globals:
- */
+
+// heavy heater report-related globals:
 unsigned long long hh_overallsize;             // size of all allocations
 unsigned long long hh_memsize[NALLOCATORS];    // size of memory, allocated by every function
 unsigned long long hh_counter[NALLOCATORS];    // number of allocations requested by every function
@@ -162,10 +161,10 @@ void m61_free(void *ptr, const char *file, int line)
 
 /**
  * [m61_realloc changes the size of the allocated memory block]
- * @param ptr  [d]
+ * @param ptr  [pointer to previously allocated memory]
  * @param sz   [new requested size]
- * @param file [description]
- * @param line [description]
+ * @param file [file]
+ * @param line [line]
  */
 void *m61_realloc(void *ptr, size_t sz, const char *file, int line) 
 {
@@ -202,6 +201,13 @@ void *m61_realloc(void *ptr, size_t sz, const char *file, int line)
 /**
  * Returning a chunk of memory, that is set to zero
  */
+/**
+ * [m61_calloc allocates memory for an array of nmemb elements of sz bytes each.]
+ * @param nmemb [number of elements]
+ * @param sz    [size of each elemnt]
+ * @param file  [file]
+ * @param line  [line]
+ */
 void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line) 
 {
     void *ptr = m61_malloc(nmemb * sz, file, line);
@@ -211,8 +217,9 @@ void *m61_calloc(size_t nmemb, size_t sz, const char *file, int line)
 }
 
 
-/** 
- * Retrieving statistics from data structures
+/**
+ * [m61_getstatistics collects statistics from the linked list]
+ * @param stats [description]
  */
 void m61_getstatistics(struct m61_statistics* stats)
 {
@@ -294,12 +301,12 @@ void m61_printleakreport(void)
 
 /**
  * [m61_add2list adds items to the list]
- * @param  ptr    [description]
- * @param  sz     [description]
- * @param  status [description]
- * @param  file   [description]
- * @param  line   [description]
- * @return        [description]
+ * @param  ptr    [pointer to allocated memory]
+ * @param  sz     [size of the allocated memory]
+ * @param  status [status of memory]
+ * @param  file   [file]
+ * @param  line   [line]
+ * @return        [status code]
  */
 int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
 {
@@ -341,8 +348,8 @@ int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
 
 /**
  * [m61_removefromlist 'removing' items from the list ]
- * @param  ptr [pointer]
- * @return     [status]
+ * @param  ptr [pointer to allocated memory]
+ * @return     [status code]
  * 
  * Well, we don't actualy removing these items from list, just marking them as INACTIVE
  */
@@ -444,7 +451,7 @@ inline void loadBar(int i, int num, int step, int width)
     // Show the percentage complete.
     printf("%3d%% [", (int)(ratio*100) );
  
-    // Show the load bar.
+    // Show the load bar
     for (int i = 0; i < c; i++)
        printf("=");
  
