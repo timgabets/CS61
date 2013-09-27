@@ -3,10 +3,6 @@
  *  
  *  The task is to write a debugging malloc library that helps track and debug memory usage, 
  *  and that catches memory errors in our handout programs (and other programs).
- *
- *  Also, the code is a bit mixed-up and contains lots of global declarations and definitions, 
- *  that should be placed in m61.h, but "you should not edit m61.h" they said. 
- *  "It ain't fun" I said...
  *  
  *   Tim Gabets <gabets@g.harvard.edu>
  *   September 2013
@@ -20,58 +16,8 @@
 #include <inttypes.h>
 #include <limits.h>
 
-// allocated memory statuses:
-#define INACTIVE 0
-#define ACTIVE 1
-#define FAILED 2
-
-// memory free return statuses:
-#define SUCCESS 1
-#define FAIL 0
-#define INVLDFREE -1
-#define NOTINHEAP -2
-#define NOTALLOC -3
-#define INSIDENOTALLOCD -4
-
-#define NALLOCATORS 40
-
-/**
- * m61-related globals:
- * 
- * We use linked list to save pointer metadata, which is not really a great idea,
- * because memory for this linked list is allocating from the heap, like the 
- * usual user data. It means that data and metadata are mixed up in the heap. 
- * It works fine in 99% of cases, but sometimes user can smartly overwrite 
- * this metadata (like in test026 ), and then a really bad thing can happen.
- */
-struct list 
-{
-    void*           address;    // pointer to allocated memory 
-    int             status;     // 0 is inactive, 1 is active, 2 is failed
-    size_t          size;       // size of allocated memory
-    char            file[32];   // name of the file, from where allocation requested
-    int             line;       // line in the file
-    struct list*    next;       // next item in the list
-};
-
 // head of the list:
 struct list* head = NULL;
-
-// m61 functions declarations:
-int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line);
-int m61_removefromlist(void* ptr);
-size_t m61_getsize(void* ptr);
-struct list* m61_getmetadata(void* ptr);
-extern void loadBar(int i, int num, int step, int width);
-extern void hh_initcounters(void);
-extern void hh_printstats(unsigned long long count);
-
-
-// heavy heater report-related globals:
-unsigned long long hh_overallsize;             // size of all allocations
-unsigned long long hh_memsize[NALLOCATORS];    // size of memory, allocated by every function
-unsigned long long hh_counter[NALLOCATORS];    // number of allocations requested by every function
-
 
 /**
  * [m61_malloc allocates memory]
@@ -348,7 +294,7 @@ int m61_add2list(void* ptr, size_t sz, int status, const char* file, int line)
 
 /**
  * [m61_removefromlist 'removing' items from the list ]
- * @param  ptr [pointer to allocated memory]
+ * @param  ptr [pointer to allocated]
  * @return     [status code]
  * 
  * Well, we don't actualy removing these items from list, just marking them as INACTIVE
