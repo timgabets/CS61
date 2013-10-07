@@ -2,8 +2,8 @@ README for CS 61 Problem Set 2
 ------------------------------
 YOU MUST FILL OUT THIS FILE BEFORE SUBMITTING!
 
-YOUR NAME:
-YOUR HUID:
+YOUR NAME: Timur Gabets
+YOUR HUID: 10924413
 
 (Optional, for partner)
 YOUR NAME:

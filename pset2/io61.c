@@ -1,18 +1,40 @@
+/**
+ * CS61 Problem Set 2. IO61 implementation.
+ * 
+ * Tim Gabets <gabets@g.harvard.edu>
+ * October 2013
+ */
+
 #include "io61.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <limits.h>
 #include <errno.h>
 
-// io61.c
-//    YOUR CODE HERE!
+#define SLOTSNUMBER 8     // the number of cache slots
+#define DATASIZE    64   // the size of each data slot in bytes
+#define TRUE        1
+#define FALSE       0
 
+int CURRENT_CACHE_SLOT = 0;
+time_t expiry_time = 10; 
 
-// io61_file
-//    Data structure for io61 file wrappers. Add your own stuff.
+typedef struct cacheslot{
+    void*       address;            // address on primary storage, 
+    char        data[DATASIZE];     // 
+    unsigned    offset;             // 
+    int         dirty;              // is 1 if data in the cache slot is not written on disk
+    time_t      timestamp;          // time of last modification of the slot
+}cacheslot;
+
+cacheslot* io61_evicting(void);
+
+// our cache is an array of cacheslots:
+cacheslot cache[SLOTSNUMBER];
 
 struct io61_file {
-    int fd;
+    int         fd;
+    unsigned    offset;
 };
 
 
@@ -23,9 +45,12 @@ struct io61_file {
 //    files.
 
 io61_file* io61_fdopen(int fd, int mode) {
+    
     assert(fd >= 0);
     io61_file* f = (io61_file*) malloc(sizeof(io61_file));
-    f->fd = fd;
+
+    f -> fd = fd;
+
     (void) mode;
     return f;
 }
@@ -42,13 +67,20 @@ int io61_close(io61_file* f) {
 }
 
 
-// io61_readc(f)
-//    Read a single (unsigned) character from `f` and return it. Returns EOF
-//    (which is -1) on error or end-of-file.
-
+/**
+ * [io61_readc reading one character from a given file]
+ * @param  f [file]
+ * @return   [EOF ]
+ *
+ * For effective one-character reading, we use prefetching policy.
+ */
 int io61_readc(io61_file* f) {
-    unsigned char buf[1];
-    if (read(f->fd, buf, 1) == 1)
+
+
+
+   unsigned char buf[1];
+
+    if (read(f -> fd, buf, 1) == 1)
         return buf[0];
     else
         return EOF;
@@ -60,12 +92,47 @@ int io61_readc(io61_file* f) {
 //    -1 on error.
 
 int io61_writec(io61_file* f, int ch) {
+    
+    // checking is there needed page in a cache:
+    for(int i = 0; i < SLOTSNUMBER; i++)
+    {
+        if(cache[i].address == f)
+        {
+            if(cache[i].offset < DATASIZE)  // if there is a place in a slot
+            {
+                cache[i].offset++;
+                cache[i].data[ cache[i].offset ] = ch;
+                return 0;
+
+            }else        // no space left in the slot. Flushing
+            {
+                io61_flush(cache[i].address);
+                io61_writec(f, ch);
+                return 0;
+            }
+
+        }
+    }
+
+    // nothing found in a cache. Requesting a new cache slot:
+    cacheslot* s = io61_evicting();
+    
+    // filling the cache slot:
+    s -> address = f;
+    s -> offset = 0;
+    s -> dirty = 1;
+    s -> data[s -> offset] = ch;
+
+    return 0;
+ /*   
     unsigned char buf[1];
     buf[0] = ch;
-    if (write(f->fd, buf, 1) == 1)
+
+    if (write(f -> fd, buf, 1) == 1)
         return 0;
     else
         return -1;
+*/
 }
 
 
@@ -74,7 +141,21 @@ int io61_writec(io61_file* f, int ch) {
 
 int io61_flush(io61_file* f) {
     (void) f;
-    return 0;
+
+    for(int i = 0; i < SLOTSNUMBER; i++)
+     if(cache[i].address == f)
+    {
+        if( write(f -> fd, cache[i].data, cache[i].offset + 1) == -1)
+            return -1;
+        else
+        {
+            cache[i].address = NULL;
+            return 0;
+        }
+    }
+
+    // f wasn't found in the cache
+    return -1;
 }
 
 
@@ -107,11 +188,13 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
 
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
     size_t nwritten = 0;
+
     while (nwritten != sz) {
         if (io61_writec(f, buf[nwritten]) == -1)
             break;
         ++nwritten;
     }
+
     if (nwritten == 0 && sz != 0)
         return -1;
     else
@@ -125,6 +208,7 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 
 int io61_seek(io61_file* f, size_t pos) {
     off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
+
     if (r == (off_t) pos)
         return 0;
     else
@@ -167,4 +251,24 @@ ssize_t io61_filesize(io61_file* f) {
         return s.st_size;
     else
         return -1;
+}
+
+/**
+ * [io61_evicting description]
+ * @return []
+ *
+ * Round-robin evicting policy for cache pages
+ */
+cacheslot* io61_evicting()
+{
+    CURRENT_CACHE_SLOT++;
+    CURRENT_CACHE_SLOT %= SLOTSNUMBER;
+
+    if( cache[CURRENT_CACHE_SLOT].dirty == 1 
+        && cache[CURRENT_CACHE_SLOT].address != NULL)    
+        // this slot contains data that is not written to disk.
+        // need to flush first
+        io61_flush(cache[CURRENT_CACHE_SLOT].address);
+
+        return &cache[CURRENT_CACHE_SLOT];
 }
