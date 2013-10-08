@@ -12,7 +12,7 @@
 #include <errno.h>
 
 #define SLOTSNUMBER 8     // the number of cache slots
-#define DATASIZE    64   // the size of each data slot in bytes
+#define DATASIZE    32   // the size of each data slot in bytes
 #define TRUE        1
 #define FALSE       0
 
@@ -20,9 +20,9 @@ int CURRENT_CACHE_SLOT = 0;
 time_t expiry_time = 10; 
 
 typedef struct cacheslot{
-    void*       address;            // address on primary storage, 
+    void*       address;            // address on primary storage
+    unsigned    offset;
     char        data[DATASIZE];     // 
-    unsigned    offset;             // 
     int         dirty;              // is 1 if data in the cache slot is not written on disk
     time_t      timestamp;          // time of last modification of the slot
 }cacheslot;
@@ -34,7 +34,6 @@ cacheslot cache[SLOTSNUMBER];
 
 struct io61_file {
     int         fd;
-    unsigned    offset;
 };
 
 
@@ -98,10 +97,9 @@ int io61_writec(io61_file* f, int ch) {
     {
         if(cache[i].address == f)
         {
-            if(cache[i].offset < DATASIZE)  // if there is a place in a slot
+            if(cache[i].offset < DATASIZE - 1)  // if there is a place in a slot
             {
-                cache[i].offset++;
-                cache[i].data[ cache[i].offset ] = ch;
+                cache[i].data[ ++cache[i].offset ] = ch;
                 return 0;
 
             }else        // no space left in the slot. Flushing
@@ -121,7 +119,7 @@ int io61_writec(io61_file* f, int ch) {
     s -> address = f;
     s -> offset = 0;
     s -> dirty = 1;
-    s -> data[s -> offset] = ch;
+    s -> data[0] = ch;
 
     return 0;
  /*   
@@ -143,7 +141,7 @@ int io61_flush(io61_file* f) {
     (void) f;
 
     for(int i = 0; i < SLOTSNUMBER; i++)
-     if(cache[i].address == f)
+    if(cache[i].address == f)
     {
         if( write(f -> fd, cache[i].data, cache[i].offset + 1) == -1)
             return -1;
