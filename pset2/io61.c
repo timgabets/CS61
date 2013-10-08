@@ -11,23 +11,24 @@
 #include <limits.h>
 #include <errno.h>
 
-#define SLOTSNUMBER 8     // the number of cache slots
-#define DATASIZE    32   // the size of each data slot in bytes
+#define SLOTSNUMBER 10     // the number of cache slots
+#define DATASIZE    1024   // the size of each data slot in bytes
 #define TRUE        1
 #define FALSE       0
 
+#define MIN_PAGE_SIZE   512     // (bytes). Starting size of cache page
+#define MAX_PAGE_SIZE   262144  // (bytes) the maximum page size, that can have cache page
+
 int CURRENT_CACHE_SLOT = 0;
-time_t expiry_time = 10; 
 
 typedef struct cacheslot{
-    void*       address;            // address on primary storage
-    unsigned    offset;
-    char        data[DATASIZE];     // 
-    int         dirty;              // is 1 if data in the cache slot is not written on disk
-    time_t      timestamp;          // time of last modification of the slot
+    void*               address;            // address on primary storage
+    size_t              offset;             // read/write position
+    char*               data;               // data buffer. Can have size from MIN_PAGE_SIZE to MAX_PAGE_SIZE
+    struct cacheslot*   next;
 }cacheslot;
 
-cacheslot* io61_evicting(void);
+struct cacheslot* head = NULL;
 
 // our cache is an array of cacheslots:
 cacheslot cache[SLOTSNUMBER];
@@ -36,6 +37,9 @@ struct io61_file {
     int         fd;
 };
 
+cacheslot* io61_evict(void);
+cacheslot* io61_getslot(void);
+cacheslot* io61_getmorespace(cacheslot*);
 
 // io61_fdopen(fd, mode)
 //    Return a new io61_file that reads from and/or writes to the given
@@ -75,26 +79,78 @@ int io61_close(io61_file* f) {
  */
 int io61_readc(io61_file* f) {
 
+/*
 
+    // nothing found in a cache. Requesting a new cache slot:
+    cacheslot* s = io61_evicting();
+    
+    // filling the cache slot:
+    s -> address = f;
+    s -> offset = 0;
 
+    // TODO: check return value
+    // On  success,  the  number of bytes read is returned 
+    // (zero indicates end of file):
+    read(f -> fd, s -> data, DATASIZE);
+
+    return s -> data[0];
+*/
    unsigned char buf[1];
 
     if (read(f -> fd, buf, 1) == 1)
         return buf[0];
     else
         return EOF;
+
+    return 0;
 }
 
 
-// io61_writec(f)
-//    Write a single character `ch` to `f`. Returns 0 on success or
-//    -1 on error.
-
+/**
+ * [io61_writec Returns 0 on success on -1 on error.]
+ * @param  f  [file to write to]
+ * @param  ch [character to write]
+ * @return    [Returns 0 on success or -1 on error.]
+ * 
+ */
 int io61_writec(io61_file* f, int ch) {
-    
+
+    cacheslot* temp;
+
+    if(head != NULL)
+    {    
+        temp = head;
+        while(temp != NULL)
+        {
+            if(temp -> address == f)
+            {
+                if(temp -> offset < DATASIZE - 1)
+                {
+                    temp -> data[ ++temp -> offset ] = ch;
+                    return 0;
+                }else // more space needed for data page
+                {
+                    temp = io61_getmorespace(temp);
+                    temp -> data[ ++temp -> offset ] = ch;
+                    return 0;
+                }
+            }
+            else
+                temp = temp -> next; 
+        }
+    }else  
+    {
+        temp = io61_getslot();
+        temp -> address = f;
+        temp -> data[0] = ch;
+
+        return 0;
+    }
+
+
+/*    
     // checking is there needed page in a cache:
     for(int i = 0; i < SLOTSNUMBER; i++)
-    {
         if(cache[i].address == f)
         {
             if(cache[i].offset < DATASIZE - 1)  // if there is a place in a slot
@@ -110,7 +166,6 @@ int io61_writec(io61_file* f, int ch) {
             }
 
         }
-    }
 
     // nothing found in a cache. Requesting a new cache slot:
     cacheslot* s = io61_evicting();
@@ -120,42 +175,44 @@ int io61_writec(io61_file* f, int ch) {
     s -> offset = 0;
     s -> dirty = 1;
     s -> data[0] = ch;
-
-    return 0;
- /*   
-    unsigned char buf[1];
-    buf[0] = ch;
-
-    if (write(f -> fd, buf, 1) == 1)
-        return 0;
-    else
-        return -1;
 */
+    return 0;
+
 }
 
 
 // io61_flush(f)
 //    Forces a write of any `f` buffers that contain data.
 
+/**
+ * [io61_flush description]
+ * @param  f [description]
+ * @return   [description]
+ */
 int io61_flush(io61_file* f) {
     (void) f;
 
-    for(int i = 0; i < SLOTSNUMBER; i++)
-    if(cache[i].address == f)
-    {
-        if( write(f -> fd, cache[i].data, cache[i].offset + 1) == -1)
-            return -1;
-        else
+    cacheslot* temp;
+
+    if(head != NULL)
+    {    
+        temp = head;
+        while(temp != NULL)
         {
-            cache[i].address = NULL;
-            return 0;
+            if(temp -> address == f)
+            {
+                if( write(f -> fd, temp -> data, temp -> offset + 1) == -1 )
+                    return -1;
+                else
+                    return 0;
+            }
+            else
+                temp = temp -> next; 
         }
     }
-
-    // f wasn't found in the cache
-    return -1;
+    else
+        return -1;
 }
-
 
 // io61_read(f, buf, sz)
 //    Read up to `sz` characters from `f` into `buf`. Returns the number of
@@ -213,6 +270,80 @@ int io61_seek(io61_file* f, size_t pos) {
         return -1;
 }
 
+/**
+ * [io61_evict ]
+ * @return [cache slot]
+ *
+ */
+cacheslot* io61_evict()
+{
+    return NULL;
+}
+
+
+/**
+ * [io61_getslot ]
+ * @return [allocated cache slot] 
+ */
+cacheslot* io61_getslot()
+{   
+    if(head != NULL)
+    {
+        cacheslot* temp = head;
+        
+        while(temp -> next != NULL)
+            temp = temp -> next;
+      
+        cacheslot* tail = malloc( sizeof(cacheslot) );
+
+        temp -> next = tail;
+        tail -> address = NULL;
+        tail -> offset = 0;
+        tail -> data = (char*) malloc(MIN_PAGE_SIZE);
+        tail -> next = NULL;
+
+        return tail;
+    }
+    else
+    {
+        head = (cacheslot*) malloc( sizeof(cacheslot) );
+        head -> address = NULL;
+        head -> offset = 0;
+        head -> data = (char*) malloc(MIN_PAGE_SIZE);
+        head -> next = NULL;
+
+        return head;
+    }
+}
+
+
+/**
+ * [io61_getmorespace description]
+ * @return  [description]
+ *
+ * If requested size of data[] is more than MAX_PAGE_SIZE, no reallocation will be provided. 
+ * The page will be flushed, after that there will be allocated another page with MIN_PAGE_SIZE buffer.
+ * 
+ */
+cacheslot* io61_getmorespace(cacheslot* temp)
+{
+    // temp -> offset contains current size of temp -> data[]. Calculating needed size:
+    size_t nextsize = 2 * (temp -> offset) + 1;
+
+    if ( nextsize <= MAX_PAGE_SIZE )
+    {
+        temp = realloc( temp -> data, nextsize);
+        return temp;
+    }
+    // TODO
+}
+
+
+
+
+
+
+
 
 // You should not need to change either of these functions.
 
@@ -251,22 +382,3 @@ ssize_t io61_filesize(io61_file* f) {
         return -1;
 }
 
-/**
- * [io61_evicting description]
- * @return []
- *
- * Round-robin evicting policy for cache pages
- */
-cacheslot* io61_evicting()
-{
-    CURRENT_CACHE_SLOT++;
-    CURRENT_CACHE_SLOT %= SLOTSNUMBER;
-
-    if( cache[CURRENT_CACHE_SLOT].dirty == 1 
-        && cache[CURRENT_CACHE_SLOT].address != NULL)    
-        // this slot contains data that is not written to disk.
-        // need to flush first
-        io61_flush(cache[CURRENT_CACHE_SLOT].address);
-
-        return &cache[CURRENT_CACHE_SLOT];
-}
