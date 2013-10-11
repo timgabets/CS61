@@ -12,8 +12,8 @@
 #include <errno.h>
 
 #define STANDALONE      -1
-#define NUMBEROFSLOTS   4
-#define BUFSIZE         4096
+#define NUMBEROFSLOTS   17
+#define BUFSIZE         8192
 #define SUCCESS         0
 #define FAIL            -1
 #define TRUE            1
@@ -26,8 +26,10 @@ struct io61_file {
 
 typedef struct cacheslot{
     io61_file*  address;
-    char        data[BUFSIZE];
+    //char        data[BUFSIZE];
+    char*       data;
     ssize_t     offset;
+    ssize_t     bufsize;
 }cacheslot;
 
 struct cacheslot cache[NUMBEROFSLOTS];
@@ -37,15 +39,17 @@ int toevict = 0;        // index of the cache slot, that will be evicted next
 
 int io61_getslot(io61_file*);
 void io61_cacheinit(void);
-int io61_evict(io61_file*);
+int io61_evict(void);
 
-// io61_fdopen(fd, mode)
-//    Return a new io61_file that reads from and/or writes to the given
-//    file descriptor `fd`. `mode` is either O_RDONLY for a read-only file
-//    or O_WRONLY for a write-only file. You need not support read/write
-//    files.
-
+/**
+ * [io61_fdopen return a new io61_file that reads from and/or writes to the given file descriptor `fd`.
+ *              We need not support read/write files.]
+ * @param  fd   [file descriptor]
+ * @param  mode [is either O_RDONLY for a read-only file or O_WRONLY for a write-only file.]
+ * @return      [description]
+ */
 io61_file* io61_fdopen(int fd, int mode) {
+    
     assert(fd >= 0);
     io61_file* f = (io61_file*) malloc(sizeof(io61_file));
     f -> fd = fd;
@@ -64,6 +68,7 @@ int io61_close(io61_file* f) {
     io61_flush(f);
     int r = close(f->fd);
     free(f);
+
     return r;
 }
 
@@ -105,69 +110,6 @@ int io61_readc(io61_file* f) {
 
 
 /**
- * [io61_getslot description]
- * @param  f [file]
- * @return   [index of cache slot]
- */
-int io61_getslot(io61_file* f)
-{
-    if(cacheready == 0)
-    {
-        io61_cacheinit();
-        cacheready = 1;
-    }
-
-    // looking for unused slots:
-    for(int i = 0; i < NUMBEROFSLOTS; i++)
-    {
-        if(cache[i].address == NULL)
-        {    
-            cache[i].address = f;
-            cache[i].offset = 0;
-            
-            return i;
-        }
-    }
-
-    // no free slots. Evicting:
-    int i = io61_evict(f);
-
-    // FIXME:
-    // the last rites:   
-    cache[i].address = f;
-    cache[i].offset = 0;
-   
-    // ready to leave now
-    return i;
-}
-
-/**
- * [io61_evict applying evicting policy to cache slots]
- * @return  [index of freed cache slot]
- */
-int io61_evict(io61_file* f)
-{
-    if(f -> mode == O_WRONLY)
-        io61_flush(cache[toevict].address);
-        
-    // no flush
-    int index = toevict;
-
-    toevict++;
-    toevict %= NUMBEROFSLOTS;
-
-    return index;
-
-
-}
-
-void io61_cacheinit(void)
-{
-    for(int i = 0; i < NUMBEROFSLOTS; i++)
-        cache[i].address = NULL;
-}
-
-/**
  * [io61_writec writes a single character `ch` to `f`. By design, there is only one cache page is associated with each file]
  * @param  f  [file]
  * @param  ch [character to write]
@@ -194,21 +136,84 @@ int io61_writec(io61_file* f, int ch)
     cache[i].data[ cache[i].offset++ ] = ch;
 
     return SUCCESS;
-
-/*
-    unsigned char buf[1];
-    buf[0] = ch;
-    if (write(f->fd, buf, 1) == 1)
-        return 0;
-    else
-        return -1;
-*/
 }
 
 
-// io61_flush(f)
-//    Forces a write of any `f` buffers that contain data.
+/**
+ * [io61_getslot description]
+ * @param  f [file]
+ * @return   [index of cache slot]
+ */
+int io61_getslot(io61_file* f)
+{
+    if(cacheready == 0)
+    {
+        io61_cacheinit();
+        cacheready = 1;
+    }
 
+    // looking for unused slots:
+    for(int i = 0; i < NUMBEROFSLOTS; i++)
+    {
+        if(cache[i].address == NULL)
+        {    
+            cache[i].address = f;
+            cache[i].data = malloc(BUFSIZE);
+            cache[i].offset = 0;
+            cache[i].bufsize = BUFSIZE;
+            
+            return i;
+        }
+    }
+
+    // no free slots. Evicting:
+    int i = io61_evict();
+
+    // FIXME:
+    // the last rites:   
+    cache[i].address = f;
+    cache[i].data = malloc(BUFSIZE);
+    cache[i].offset = 0;
+    cache[i].bufsize = BUFSIZE;
+   
+    // ready to leave now
+    return i;
+}
+
+/**
+ * [io61_evict applying evicting policy to cache slots]
+ * @return  [index of freed cache slot]
+ */
+int io61_evict(void)
+{
+    int i = toevict;
+    if( (cache[i].address) -> fd == O_WRONLY)
+        io61_flush(cache[toevict].address);
+
+    free(cache[i].data);
+
+    toevict++;
+    toevict %= NUMBEROFSLOTS;
+
+    return i;
+}
+
+
+/**
+ * [io61_cacheinit initializng cache slots]
+ */
+void io61_cacheinit(void)
+{
+    for(int i = 0; i < NUMBEROFSLOTS; i++)
+        cache[i].address = NULL;
+}
+
+
+/**
+ * [io61_flush forces a write of any `f` buffers that contain data.]
+ * @param  f [description]
+ * @return   [description]
+ */
 int io61_flush(io61_file* f) {
     (void) f;
 
@@ -216,13 +221,15 @@ int io61_flush(io61_file* f) {
     for(int i = 0; i < NUMBEROFSLOTS; i++)
         if(cache[i].address == f)
         {
-            write(f -> fd, cache[i].data, cache[i].offset);
-            cache[i].address = NULL;           
-            return SUCCESS;
+            if( write(f -> fd, cache[i].data, cache[i].offset) != -1)
+            {
+                cache[i].address = NULL;           
+                return SUCCESS;
+            }else
+                return FAIL;
         }
 
     return FAIL;
-
 }
 
 
@@ -236,18 +243,36 @@ int io61_flush(io61_file* f) {
  *              Returns -1 an error occurred before any characters were read.]
  */
 ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
-    size_t nread = 0;
-    while (nread != sz) {
-        int ch = io61_readc(f);
-        if (ch == EOF)
-            break;
-        buf[nread] = ch;
-        ++nread;
+
+    ssize_t nread;
+
+    for(int i = 0; i < NUMBEROFSLOTS; i++)
+    {
+        if(cache[i].address == f && cache[i].offset < cache[i].bufsize)
+        {   
+            if(sz > cache[i].bufsize - cache[i].offset)
+                sz = cache[i].bufsize - cache[i].offset;
+
+            memcpy(buf, &cache[i].data[ cache[i].offset ], sz);
+            cache[i].offset += sz;
+
+            return sz;
+        }
     }
+
+    // nothing found in a cache:
+    int i = io61_getslot(f); 
+    nread = read(f -> fd, cache[i].data, BUFSIZE);
+    cache[i].bufsize = nread;
+
+    // returning the first chunk of read data:
+    memcpy(buf, cache[i].data, sz);
+    cache[i].offset = sz;
+
     if (nread == 0 && sz != 0)
         return -1;
     else
-        return nread;
+        return sz;
 }
 
 
