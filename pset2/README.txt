@@ -18,7 +18,7 @@ KNOWN BUGS (if any):
 
 
 NOTES FOR THE GRADER (if any):
-
+Please, do not grade it, I am still working on this pset!
 
 
 EXTRA CREDIT ATTEMPTED (if any):
