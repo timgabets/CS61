@@ -12,7 +12,7 @@
 #include <errno.h>
 
 #define STANDALONE      -1
-#define NUMBEROFSLOTS   17
+#define NUMBEROFSLOTS   5
 #define BUFSIZE         8192
 #define SUCCESS         0
 #define FAIL            -1
@@ -28,8 +28,8 @@ typedef struct cacheslot{
     io61_file*  address;
     //char        data[BUFSIZE];
     char*       data;
-    ssize_t     offset;
-    ssize_t     bufsize;
+    size_t     offset;
+    size_t     bufsize;
 }cacheslot;
 
 struct cacheslot cache[NUMBEROFSLOTS];
@@ -140,6 +140,115 @@ int io61_writec(io61_file* f, int ch)
 
 
 /**
+ * [io61_read Read up to `sz` characters from `f` into `buf`.]
+ * @param  f   [description]
+ * @param  buf [description]
+ * @param  sz  [description]
+ * @return     [Returns the number of characters read on success; normally this is `sz`. 
+ *              Returns a short count if the file ended before `sz` characters could be read. 
+ *              Returns -1 an error occurred before any characters were read.]
+ */
+ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
+
+    ssize_t nread;
+
+    for(int i = 0; i < NUMBEROFSLOTS; i++)
+    {
+        if(cache[i].address == f && cache[i].offset < cache[i].bufsize)
+        {   
+            if(sz > cache[i].bufsize - cache[i].offset)
+                sz = cache[i].bufsize - cache[i].offset;
+
+            memcpy(buf, &cache[i].data[ cache[i].offset ], sz);
+            cache[i].offset += sz;
+
+            return sz;
+        }
+    }
+
+    // nothing found in a cache:
+    int i = io61_getslot(f); 
+    nread = read(f -> fd, cache[i].data, BUFSIZE);
+    cache[i].bufsize = nread;
+
+    // returning the first chunk of read data:
+    memcpy(buf, cache[i].data, sz);
+    cache[i].offset = sz;
+
+    if (nread == 0 && sz != 0)
+        return -1;
+    else
+        return sz;
+}
+
+
+/**
+ * [io61_write writes `sz` characters from `buf` to `f`]
+ * @param  f   [description]
+ * @param  buf [description]
+ * @param  sz  [description]
+ * @return     [Returns the number of characters written on success; normally this is `sz`. 
+ *              Returns -1 if an error occurred before any characters were written.]
+ */
+ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
+
+    for(int i = 0; i < NUMBEROFSLOTS; i++)
+    {
+        if(cache[i].address == f)
+        {
+            if(cache[i].offset < cache[i].bufsize)
+            {
+                if(sz > cache[i].bufsize - cache[i].offset)
+                    sz = cache[i].bufsize - cache[i].offset;
+
+                memcpy(&cache[i].data[ cache[i].offset ], buf, sz);
+                cache[i].offset += sz;
+                return sz;
+
+            }else // flushing needed
+            {
+                io61_flush(f);
+                break;
+            }
+        }
+    }
+
+    int i = io61_getslot(f);
+    memcpy(cache[i].data, buf, sz);
+    cache[i].offset = sz;
+
+    return sz;
+/*
+    size_t nwritten = 0;
+    while (nwritten != sz) {
+        if (io61_writec(f, buf[nwritten]) == -1)
+            break;
+        ++nwritten;
+    }
+    if (nwritten == 0 && sz != 0)
+        return -1;
+    else
+        return nwritten;
+*/
+}
+
+
+/**
+ * [io61_seek change the file pointer for file `f` to `pos` bytes into the file.]
+ * @param  f   [description]
+ * @param  pos [description]
+ * @return     [returns 0 on success and -1 on failure.]
+ */
+int io61_seek(io61_file* f, size_t pos) {
+    off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
+    if (r == (off_t) pos)
+        return 0;
+    else
+        return -1;
+}
+
+
+/**
  * [io61_getslot description]
  * @param  f [file]
  * @return   [index of cache slot]
@@ -230,86 +339,6 @@ int io61_flush(io61_file* f) {
         }
 
     return FAIL;
-}
-
-
-/**
- * [io61_read Read up to `sz` characters from `f` into `buf`.]
- * @param  f   [description]
- * @param  buf [description]
- * @param  sz  [description]
- * @return     [Returns the number of characters read on success; normally this is `sz`. 
- *              Returns a short count if the file ended before `sz` characters could be read. 
- *              Returns -1 an error occurred before any characters were read.]
- */
-ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
-
-    ssize_t nread;
-
-    for(int i = 0; i < NUMBEROFSLOTS; i++)
-    {
-        if(cache[i].address == f && cache[i].offset < cache[i].bufsize)
-        {   
-            if(sz > cache[i].bufsize - cache[i].offset)
-                sz = cache[i].bufsize - cache[i].offset;
-
-            memcpy(buf, &cache[i].data[ cache[i].offset ], sz);
-            cache[i].offset += sz;
-
-            return sz;
-        }
-    }
-
-    // nothing found in a cache:
-    int i = io61_getslot(f); 
-    nread = read(f -> fd, cache[i].data, BUFSIZE);
-    cache[i].bufsize = nread;
-
-    // returning the first chunk of read data:
-    memcpy(buf, cache[i].data, sz);
-    cache[i].offset = sz;
-
-    if (nread == 0 && sz != 0)
-        return -1;
-    else
-        return sz;
-}
-
-
-/**
- * [io61_write writes `sz` characters from `buf` to `f`]
- * @param  f   [description]
- * @param  buf [description]
- * @param  sz  [description]
- * @return     [Returns the number of characters written on success; normally this is `sz`. 
- *              Returns -1 if an error occurred before any characters were written.]
- */
-ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
-    size_t nwritten = 0;
-    while (nwritten != sz) {
-        if (io61_writec(f, buf[nwritten]) == -1)
-            break;
-        ++nwritten;
-    }
-    if (nwritten == 0 && sz != 0)
-        return -1;
-    else
-        return nwritten;
-}
-
-
-/**
- * [io61_seek change the file pointer for file `f` to `pos` bytes into the file.]
- * @param  f   [description]
- * @param  pos [description]
- * @return     [returns 0 on success and -1 on failure.]
- */
-int io61_seek(io61_file* f, size_t pos) {
-    off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
-    if (r == (off_t) pos)
-        return 0;
-    else
-        return -1;
 }
 
 
