@@ -26,8 +26,8 @@ struct io61_file {
 
 typedef struct cacheslot{
     io61_file*  address;
-    //char        data[BUFSIZE];
-    char*       data;
+    char        data[BUFSIZE];
+    //char*       data;
     size_t     offset;
     size_t     bufsize;
 }cacheslot;
@@ -267,7 +267,7 @@ int io61_getslot(io61_file* f)
         if(cache[i].address == NULL)
         {    
             cache[i].address = f;
-            cache[i].data = malloc(BUFSIZE);
+            //cache[i].data = malloc(BUFSIZE);
             cache[i].offset = 0;
             cache[i].bufsize = BUFSIZE;
             
@@ -278,10 +278,9 @@ int io61_getslot(io61_file* f)
     // no free slots. Evicting:
     int i = io61_evict();
 
-    // FIXME:
     // the last rites:   
     cache[i].address = f;
-    cache[i].data = malloc(BUFSIZE);
+    //cache[i].data = malloc(BUFSIZE);
     cache[i].offset = 0;
     cache[i].bufsize = BUFSIZE;
    
@@ -299,7 +298,7 @@ int io61_evict(void)
     if( (cache[i].address) -> fd == O_WRONLY)
         io61_flush(cache[toevict].address);
 
-    free(cache[i].data);
+    //free(cache[i].data);
 
     toevict++;
     toevict %= NUMBEROFSLOTS;
