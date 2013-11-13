@@ -1,0 +1,5 @@
+*.o
+cmdline
+ospsh
+out
+sh61
