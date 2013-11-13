@@ -1,3 +1,20 @@
+/**
+ * CS61 Problem Set 5. Shell.
+ * 
+ * In the pset4 there was implemented fork. In this assignment, fork - and several 
+ * other interesting system calls - are used to build an important application: 
+ * the sh61 shell! This shell will read commands on its standard input and execute
+ * them. The simple commands, background commands, conditional commands (&& and ||),
+ * redirections and pipes should be implemented, as well as command interruption. 
+ * The shell implements a subset of the bash shell’s syntax, and is generally 
+ * compatible with bash for the features they share.
+ * 
+ * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
+ * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
+ * 
+ * November 2013
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -26,10 +43,9 @@
 
 const char* parse_shell_token(const char* str, int* type, char** token);
 
-
-// struct command
-//    Data structure describing a command. Add your own stuff.
-
+/**
+ * Data structure describing a command. Add your own stuff.
+ */
 typedef struct command command;
 struct command {
     int argc;                   // number of arguments
@@ -37,9 +53,10 @@ struct command {
 };
 
 
-// command_alloc()
-//    Allocate and return a new command structure.
-
+/**
+ * [command_alloc allocates and returns a new command structure.]
+ * @return  [new command structure]
+ */
 static command* command_alloc(void) {
     command* c = (command*) malloc(sizeof(command));
     c->argc = 0;
@@ -48,9 +65,10 @@ static command* command_alloc(void) {
 }
 
 
-// command_free(c)
-//    Free command structure `c`, including all its words.
-
+/**
+ * [command_free Free command structure `c`, including all its words.]
+ * @param c [command structure]
+ */
 static void command_free(command* c) {
     for (int i = 0; i != c->argc; ++i)
         free(c->argv[i]);
@@ -59,10 +77,12 @@ static void command_free(command* c) {
 }
 
 
-// command_append_arg(c, word)
-//    Add `word` as an argument to command `c`. This increments `c->argc`
-//    and augments `c->argv`.
-
+/**
+ * [command_append_arg Add `word` as an argument to command `c`. This increments `c->argc` 
+ *                     and arguments `c->argv`]
+ * @param c    [command]
+ * @param word [description]
+ */
 static void command_append_arg(command* c, char* word) {
     c->argv = (char**) realloc(c->argv, sizeof(char*) * (c->argc + 2));
     c->argv[c->argc] = word;
@@ -71,17 +91,21 @@ static void command_append_arg(command* c, char* word) {
 }
 
 
-// COMMAND PARSING
-
+/**
+ * COMMAND PARSING
+ */
 typedef struct buildstring {
     char* s;
     int length;
     int capacity;
 } buildstring;
 
-// buildstring_append(bstr, ch)
-//    Add `ch` to the end of the dynamically-allocated string `bstr->s`.
 
+/**
+ * [buildstring_append    Add `ch` to the end of the dynamically-allocated string `bstr->s`.]
+ * @param bstr [dynamically-allocated string ]
+ * @param ch   [description]
+ */
 void buildstring_append(buildstring* bstr, int ch) {
     if (bstr->length == bstr->capacity) {
         int new_capacity = bstr->capacity ? bstr->capacity * 2 : 32;
@@ -92,17 +116,26 @@ void buildstring_append(buildstring* bstr, int ch) {
     ++bstr->length;
 }
 
-// isshellspecial(ch)
-//    Test if `ch` is a command that's special to the shell (that ends
-//    a command word).
 
+/**
+ * [isshellspecial  Test if `ch` is a command that's special to the shell (that ends 
+ *                  a command word)]
+ * @param  ch [description]
+ * @return    [description]
+ */
 static inline int isshellspecial(int ch) {
     return ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == ';'
         || ch == '(' || ch == ')' || ch == '#';
 }
 
-// parse_shell_token(str, type, token)
 
+/**
+ * [parse_shell_token description]
+ * @param  str   [description]
+ * @param  type  [description]
+ * @param  token [description]
+ * @return       [description]
+ */
 const char* parse_shell_token(const char* str, int* type, char** token) {
     buildstring buildtoken = { NULL, 0, 0 };
 
@@ -164,11 +197,12 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
 }
 
 
-// COMMAND EVALUATION
-
-// set_foreground(p)
-//    Tell the operating system that `p` is the current foreground process.
-int set_foreground(pid_t p);
+/**
+ * [set_foreground  Tells the operating system that `p` is the current foreground process]
+ * @param  p [current foreground process]
+ * @return   [description]
+ */
+//int set_foreground(pid_t p);
 
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
@@ -194,10 +228,13 @@ void eval_command_line(const char* s) {
 }
 
 
-// set_foreground(p)
-//    Tell the operating system that `p` is the current foreground process
-//    for this terminal. This engages some ugly Unix warts, so we provide
-//    it for you.
+/**
+ * [set_foreground     Tell the operating system that `p` is the current foreground process
+ *                     for this terminal. This engages some ugly Unix warts, so we provide
+ *                     it for you]
+ * @param  p [description]
+ * @return   [description]
+ */
 int set_foreground(pid_t p) {
     // YOU DO NOT NEED TO UNDERSTAND THIS.
     static int ttyfd = -1;
