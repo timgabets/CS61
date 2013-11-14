@@ -204,13 +204,20 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
  */
 //int set_foreground(pid_t p);
 
+/**
+ * [eval_command description]
+ * @param c [description]
+ */
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
     // Your code here!
     printf("eval_command not done yet\n");
 }
 
-
+/**
+ * [eval_command_line description]
+ * @param s [description]
+ */
 void eval_command_line(const char* s) {
     int type;
     char* token;
