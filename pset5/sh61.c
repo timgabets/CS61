@@ -211,7 +211,19 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
     // Your code here!
-    printf("eval_command not done yet\n");
+    
+    pid = fork();
+    
+    if(pid == 0)
+    {
+        // child
+        execvp(c -> argv[0], c -> argv);
+    }else
+    {
+        // parent. 
+        // TODO: more sophisticated waitpid() options maybe?
+        waitpid(pid, NULL, 0);
+    }
 }
 
 /**
