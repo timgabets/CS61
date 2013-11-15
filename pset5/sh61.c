@@ -217,6 +217,21 @@ void eval_command(command* c) {
     if(pid == 0)
     {
         // child
+        
+        // detecting special characters
+        for(int i = 0; i < c -> argc; i++)
+        {
+            switch( c -> argv[i][0])
+            {
+                case '<':   
+                    // reassigning standard file descriptors:
+                    close(STDIN_FILENO);
+                    open(c -> argv[i + 1], O_RDONLY);
+                    c -> argv[i] = NULL;
+                    break;
+            };
+        }
+        
         execvp(c -> argv[0], c -> argv);
     }else
     {
@@ -238,7 +253,9 @@ void eval_command_line(const char* s) {
     // build the command
     command* c = command_alloc();
     while ((s = parse_shell_token(s, &type, &token)) != NULL)
+    {
         command_append_arg(c, token);
+    }
 
     // execute the command
     if (c->argc)
