@@ -205,7 +205,6 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
  */
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
-    // Your code here!
     
     pid = fork();
     
@@ -219,19 +218,23 @@ void eval_command(command* c) {
             switch( c -> argv[i][0])
             {
 	        case '<':   
-                    // reassigning standard file descriptors:
-                    close(STDIN_FILENO);
-                    open(c -> argv[i + 1], O_RDONLY);
-                    c -> argv[i] = NULL;
-                    break;
-	    };
+                // reassigning standard file descriptors:
+                close(STDIN_FILENO);
+                open(c -> argv[i + 1], O_RDONLY);
+                c -> argv[i] = NULL;
+                break;
+	       };
         }
         
-	execvp(c -> argv[0], c -> argv);
+        if( execvp(c -> argv[0], c -> argv) == -1)
+        {    
+            perror( strerror(errno) );
+            exit(-1);
+        }
+
     }else
     {
         // parent. 
-        // TODO: more sophisticated waitpid() options maybe?
         waitpid(pid, NULL, 0);
     }
 }
