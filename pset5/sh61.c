@@ -124,7 +124,7 @@ void buildstring_append(buildstring* bstr, int ch) {
  * @return    [description]
  */
 static inline int isshellspecial(int ch) {
-    return ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == ';'
+  return ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == ';'
         || ch == '(' || ch == ')' || ch == '#';
 }
 
@@ -163,6 +163,7 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
                && (*str == '&' || *str == '|')
                && str[1] == *str) {
         *type = TOKEN_CONTROL;
+	printf("//& or or//");
         buildstring_append(&buildtoken, *str);
         buildstring_append(&buildtoken, str[1]);
         str += 2;
@@ -197,12 +198,6 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
 }
 
 
-/**
- * [set_foreground  Tells the operating system that `p` is the current foreground process]
- * @param  p [current foreground process]
- * @return   [description]
- */
-//int set_foreground(pid_t p);
 
 /**
  * [eval_command description]
@@ -223,16 +218,16 @@ void eval_command(command* c) {
         {
             switch( c -> argv[i][0])
             {
-                case '<':   
+	        case '<':   
                     // reassigning standard file descriptors:
                     close(STDIN_FILENO);
                     open(c -> argv[i + 1], O_RDONLY);
                     c -> argv[i] = NULL;
                     break;
-            };
+	    };
         }
         
-        execvp(c -> argv[0], c -> argv);
+	execvp(c -> argv[0], c -> argv);
     }else
     {
         // parent. 
@@ -250,6 +245,51 @@ void eval_command_line(const char* s) {
     char* token;
     // Your code here!
 
+    // Create an array of command lines separated by ;
+    // TODO: separate not just by ; but by &...
+    // and run & commands parallel and ; commands sequentially
+    const char ** commandLines  = NULL;
+    char * p = strtok ((char*)s, ";");
+    int n_spaces = 0, i;
+
+    // Iterate through ; separated commands and add to array
+    while (p) {
+        commandLines = realloc (commandLines, sizeof (char*) * ++n_spaces);
+
+	if (commandLines == NULL)
+	    exit (-1); 
+
+	commandLines[n_spaces-1] = p;
+
+	p = strtok (NULL, ";");
+    }
+
+    // Add a NULL at the end of the command lines array
+    commandLines = realloc (commandLines, sizeof (char*) * (n_spaces+1));
+    commandLines[n_spaces] = 0;
+
+    // Iterate through command lines and execute each command
+    for (i = 0; i < (n_spaces+1); ++i) {
+  
+        if (commandLines[i]) {
+	    command* c = command_alloc();
+	    while ((commandLines[i] = parse_shell_token(commandLines[i], &type, &token)) != NULL)
+	      {
+		  command_append_arg(c, token);
+	      }
+
+	    // execute the command
+	    if (c->argc)
+	        eval_command(c);
+	    command_free(c);
+	}
+    }
+
+    // free the command lines array
+    free (commandLines);
+
+    // OLD command execution
+    /*
     // build the command
     command* c = command_alloc();
     while ((s = parse_shell_token(s, &type, &token)) != NULL)
@@ -261,6 +301,7 @@ void eval_command_line(const char* s) {
     if (c->argc)
         eval_command(c);
     command_free(c);
+*/
 }
 
 
