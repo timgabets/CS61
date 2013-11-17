@@ -205,13 +205,22 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
  */
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
+    int background = 0;
+
+    // checking for '&''
+    for(int i = 0; i < c -> argc; i++)
+        if(c -> argv[i][0] == '&')
+        {
+            background  = 1;
+            c -> argv[i] = NULL;
+            c -> argc = i;
+            break;
+        }
     
     pid = fork();
-    
     if(pid == 0)
     {
         // child
-        
         // detecting special characters
         for(int i = 0; i < c -> argc; i++)
         {
@@ -235,7 +244,8 @@ void eval_command(command* c) {
     }else
     {
         // parent. 
-        waitpid(pid, NULL, 0);
+        if(background == 0)
+            waitpid(pid, NULL, 0);
     }
 }
 
