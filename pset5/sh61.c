@@ -243,7 +243,7 @@ void eval_command(command* c) {
 
     }else
     {
-        // parent. 
+        // parent
         if(background == 0)
             waitpid(pid, NULL, 0);
     }
