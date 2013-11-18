@@ -48,8 +48,9 @@ const char* parse_shell_token(const char* str, int* type, char** token);
  */
 typedef struct command command;
 struct command {
-    int argc;                   // number of arguments
-    char** argv;                // arguments, terminated by NULL
+    int     argc;       // number of arguments
+    char**  argv;       // arguments, terminated by NULL
+    int     run;        // Should the command be run or not. Useful in case of logical operations - &&, ||, etc.
 };
 
 
