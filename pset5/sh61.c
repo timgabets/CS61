@@ -41,7 +41,7 @@
 //
 //    Returns NULL and sets `*token = NULL` at the end of string.
 
-const char* parse_shell_token(const char* str, int* type, char** token);
+char* parse_shell_token(char* str, int* type, char** token);
 
 /**
  * Data structure describing a command. Add your own stuff.
@@ -51,6 +51,7 @@ struct command {
     int     argc;       // number of arguments
     char**  argv;       // arguments, terminated by NULL
     int     run;        // Should the command be run or not. Useful in case of logical operations - &&, ||, etc.
+    int background;     // 1 if command should be run in background, 0 otherwise
 };
 
 
@@ -137,7 +138,7 @@ static inline int isshellspecial(int ch) {
  * @param  token [description]
  * @return       [description]
  */
-const char* parse_shell_token(const char* str, int* type, char** token) {
+char* parse_shell_token(char* str, int* type, char** token) {
     buildstring buildtoken = { NULL, 0, 0 };
 
     // skip spaces; return NULL and token ";" at end of line
@@ -164,7 +165,7 @@ const char* parse_shell_token(const char* str, int* type, char** token) {
                && (*str == '&' || *str == '|')
                && str[1] == *str) {
         *type = TOKEN_CONTROL;
-	printf("//& or or//");
+	//printf("//& or or//");
         buildstring_append(&buildtoken, *str);
         buildstring_append(&buildtoken, str[1]);
         str += 2;
@@ -257,37 +258,28 @@ void eval_command(command* c) {
 void eval_command_line(const char* s) {
     int type;
     char* token;
-    // Your code here!
 
-    // Create an array of command lines separated by ;
-    // TODO: separate not just by ; but by &...
-    // and run & commands parallel and ; commands sequentially
-    const char ** commandLines  = NULL;
-    char * p = strtok ((char*)s, ";");
-    int n_spaces = 0, i;
+    char** complex_command;         // complex string, (posibly) containing several 
+                                    // elementary commands, delimited by different separators
+    int count = 0;                  // number of elementary commands in a given complex string
 
-    // Iterate through ; separated commands and add to array
-    while (p)
+    char* p = strtok ((char*)s, ";&|");  
+    while (p != NULL)
     {
-        commandLines = realloc (commandLines, sizeof (char*) * ++n_spaces);
-        if (commandLines == NULL)
-            exit (-1); 
+        complex_command[count] = malloc(strlen(p));
+        strncpy(complex_command[count], p, strlen(p));
+        count++;
 
-        commandLines[n_spaces-1] = p;
-        p = strtok (NULL, ";");
+        p = strtok (NULL, ";&|");
     }
 
-    // Add a NULL at the end of the command lines array
-    commandLines = realloc (commandLines, sizeof (char*) * (n_spaces+1));
-    commandLines[n_spaces] = 0;
-
     // Iterate through command lines and execute each command
-    for (i = 0; i < (n_spaces+1); ++i)
+    for (int i = 0; i < count; ++i)
     {
-        if (commandLines[i])
+        if (complex_command[i])
         {
             command* c = command_alloc();
-            while ((commandLines[i] = parse_shell_token(commandLines[i], &type, &token)) != NULL)
+            while ((complex_command[i] = parse_shell_token(complex_command[i], &type, &token)) != NULL)
                 command_append_arg(c, token);
 	      
             // execute the command
@@ -297,9 +289,6 @@ void eval_command_line(const char* s) {
             command_free(c);
         }
     }
-
-    // free the command lines array
-    free (commandLines);
 
     // OLD command execution
     /*
