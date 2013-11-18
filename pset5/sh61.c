@@ -266,15 +266,14 @@ void eval_command_line(const char* s) {
     int n_spaces = 0, i;
 
     // Iterate through ; separated commands and add to array
-    while (p) {
+    while (p)
+    {
         commandLines = realloc (commandLines, sizeof (char*) * ++n_spaces);
+        if (commandLines == NULL)
+            exit (-1); 
 
-	if (commandLines == NULL)
-	    exit (-1); 
-
-	commandLines[n_spaces-1] = p;
-
-	p = strtok (NULL, ";");
+        commandLines[n_spaces-1] = p;
+        p = strtok (NULL, ";");
     }
 
     // Add a NULL at the end of the command lines array
@@ -282,20 +281,20 @@ void eval_command_line(const char* s) {
     commandLines[n_spaces] = 0;
 
     // Iterate through command lines and execute each command
-    for (i = 0; i < (n_spaces+1); ++i) {
-  
-        if (commandLines[i]) {
-	    command* c = command_alloc();
-	    while ((commandLines[i] = parse_shell_token(commandLines[i], &type, &token)) != NULL)
-	      {
-		  command_append_arg(c, token);
-	      }
-
-	    // execute the command
-	    if (c->argc)
-	        eval_command(c);
-	    command_free(c);
-	}
+    for (i = 0; i < (n_spaces+1); ++i)
+    {
+        if (commandLines[i])
+        {
+            command* c = command_alloc();
+            while ((commandLines[i] = parse_shell_token(commandLines[i], &type, &token)) != NULL)
+                command_append_arg(c, token);
+	      
+            // execute the command
+            if (c->argc)
+                eval_command(c);
+            
+            command_free(c);
+        }
     }
 
     // free the command lines array
