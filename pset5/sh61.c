@@ -249,7 +249,7 @@ void eval_command(command* c) {
 	if(pid == 0)
 	{
 		// child
-		if(c -> pipewrite)
+		if(c -> pipewrite == 1 && c -> piperead == 0)
 		{
 		    close(pipefd[0]); // close unused read end for first child
 			// making stdout the pipe's write end
@@ -257,7 +257,7 @@ void eval_command(command* c) {
 			close(pipefd[1]); // no need keep 2 copies of pipe
 		}
 
-		if(c -> piperead)
+		if(c -> piperead == 0 && c -> pipewrite == 0)
 		{
 		    close(pipefd[1]); // close unused write end of second child
 		    // make second child's stdin the pipe's read end
