@@ -257,13 +257,19 @@ void eval_command(command* c) {
 			close(pipefd[1]); // no need keep 2 copies of pipe
 		}
 
-		if(c -> piperead == 0 && c -> pipewrite == 0)
+		if(c -> piperead == 1 && c -> pipewrite == 0)
 		{
 		    close(pipefd[1]); // close unused write end of second child
 		    // make second child's stdin the pipe's read end
     		dup2(pipefd[0], STDIN_FILENO);
     		close(pipefd[0]); // no need keep 2 copies of pipe
 		}
+
+        // TODO: complicated case - the command is both reading and writing
+        if(c -> piperead == 1 && c -> pipewrite == 1)
+        {
+
+        }
 
 		// detecting special characters
 		for(int i = 0; i < c -> argc; i++)
