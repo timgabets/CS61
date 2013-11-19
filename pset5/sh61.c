@@ -50,8 +50,10 @@ typedef struct command command;
 struct command {
     int     argc;       // number of arguments
     char**  argv;       // arguments, terminated by NULL
-    int     run;        // Should the command be run or not. Useful in case of logical operations - &&, ||, etc.
-    int background;     // 1 if command should be run in background, 0 otherwise
+    // in a better world all these should be binary flags:
+    int     run;        // should the command be run or not. Useful in case of logical operations - &&, ||, etc.
+    int     background; // 1 if command should be run in background, 0 otherwise
+    int     pipe;       // 1 if the output of command should be redirected, 0 otherwise
 };
 
 
@@ -63,6 +65,9 @@ static command* command_alloc(void) {
     command* c = (command*) malloc(sizeof(command));
     c->argc = 0;
     c->argv = NULL;
+    c -> run = 0;
+    c -> background = 0;
+    c -> pipe = 0;
     return c;
 }
 
@@ -87,9 +92,18 @@ static void command_free(command* c) {
  */
 static void command_append_arg(command* c, char* word) {
     c->argv = (char**) realloc(c->argv, sizeof(char*) * (c->argc + 2));
-    c->argv[c->argc] = word;
-    c->argv[c->argc + 1] = NULL;
-    ++c->argc;
+    
+    if(word[0] != '|')
+    {
+        c->argv[c->argc] = word;
+        c->argv[c->argc + 1] = NULL;
+        ++c->argc;
+    }
+    else
+    {
+        c -> pipe = 1;
+        c->argv[c->argc + 1] = NULL;
+    }
 }
 
 
@@ -194,7 +208,7 @@ char* parse_shell_token(char* str, int* type, char** token) {
     }
 
     // store new token and return the location of the next token
-    buildstring_append(&buildtoken, '\0'); // terminating NUL character
+    buildstring_append(&buildtoken, '\0'); // terminating NULL character
     *token = buildtoken.s;
     return str;
 }
@@ -207,7 +221,10 @@ char* parse_shell_token(char* str, int* type, char** token) {
  */
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
-    //int background = 0;
+
+    // TODO: checking for c -> pipe. 
+    // if c -> pipe is 1, means that the command should
+    // redirect its output not to stdout but at the next available fd.
 
     // checking for '&''
     for(int i = 0; i < c -> argc; i++)
@@ -235,7 +252,7 @@ void eval_command(command* c) {
         // child
         // detecting special characters
         for(int i = 0; i < c -> argc; i++)
-	{
+        {
 	  
             switch( c -> argv[i][0])
             {
@@ -245,8 +262,8 @@ void eval_command(command* c) {
                 open(c -> argv[i + 1], O_RDONLY);
                 c -> argv[i] = NULL;
                 break;
-	    };
-	}
+            };
+        }
         
 	
         if( execvp(c -> argv[0], c -> argv) == -1)
@@ -274,11 +291,14 @@ void build_execute(char* commandList) {
     // build the command
     command* c = command_alloc();
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
-        {
+    {
 	    command_append_arg(c, token);
+        
+        if(*token == '|')
+            c -> pipe = 1;
 	}
     // execute the command
-    if (c->argc)
+    if (c -> argc)
         eval_command(c);
     command_free(c);
 }
@@ -302,17 +322,16 @@ void eval_command_line(const char* s) {
             insideParenthesis ++;
             if (insideParenthesis == 2) 
 	           insideParenthesis = 0;
-            
         }
 
         // If we are not inside of a parenthesis and 
         //it is separated by ; or & ...
-        if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&')) 
+        if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&' || s[i] == '|')) 
         {
             // Create command list from the start of last command list
             char *commandList = (char*) malloc(i - start + 2);
             strncpy(commandList, s + start, i - start + 1);
-            
+
             // build and execute command list
             build_execute(commandList);
             free(commandList);
@@ -321,7 +340,7 @@ void eval_command_line(const char* s) {
     }
 
     // Create and execute the last comand list also
-    char *commandList = (char*) malloc(length - start + 2);
+    char* commandList = (char*) malloc(length - start + 2);
     strncpy(commandList, s + start, length - start + 1);
     build_execute(commandList);
     free(commandList);
