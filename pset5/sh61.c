@@ -221,7 +221,7 @@ void eval_command(command* c) {
 	// if c -> pipe is 1, means that the command should
 	// redirect its output not to stdout but at the next available fd.
 
-/*
+/* Commented for debugging
 	// checking for '&''
 	for(int i = 0; i < c -> argc; i++)
 		if(c -> argv[i][0] == '&')
@@ -242,6 +242,8 @@ void eval_command(command* c) {
 			break;
 		}
 */
+    // BUG: in case of comlpicated pipes, this will cause fail,
+    // because yet another pipe should be used. 
 	if(pipeused)
 		pipe(pipefd);
 
@@ -295,17 +297,17 @@ void eval_command(command* c) {
 
 	}else
 	{
-		// parent
+        // parent
         if(pipeused == 0)
         {
             // closing pipe
             close(pipefd[0]);
             close(pipefd[1]);
         }
-
-		if(c -> background == 0)
-			waitpid(pid, NULL, 0);
-	}
+        
+        if(c -> background == 0)
+            waitpid(pid, NULL, 0);
+    }
 }
 
 /**
@@ -313,35 +315,35 @@ void eval_command(command* c) {
  * @param commandLine [command to build and execute]
  */
 void build_execute(char* commandList) {
-	int type;
-	char* token;
+    int type;
+    char* token;
 
-	// build the command
-	command* c = command_alloc();
-	while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
-	{
-		command_append_arg(c, token);
+    // build the command
+    command* c = command_alloc();
+    while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
+    {
+        command_append_arg(c, token);
 		
-		if(pipeused)
-		{
-			c -> piperead = 1;
-			pipeused = 0;
-		}
+        if(pipeused)
+        {
+            // previos command used pipe for writing
+            c -> piperead = 1;
+            pipeused = 0;
+        }
 
-		if(*token == '|')
-		{
+        if(*token == '|')
+        {
             c -> pipewrite = 1;
-            c -> background = 1;
             c -> argc--;
             c -> argv[ c -> argc ] = NULL;
             pipeused = 1;
-		}
-	}
-	// execute the command
-	if (c -> argc)
-		eval_command(c);
+        }
+    }
+    // execute the command
+    if (c -> argc)
+        eval_command(c);
 
-	command_free(c);
+    command_free(c);
 }
 
 
