@@ -221,8 +221,8 @@ void eval_command(command* c) {
 	// if c -> pipe is 1, means that the command should
 	// redirect its output not to stdout but at the next available fd.
 
+/*
 	// checking for '&''
-	
 	for(int i = 0; i < c -> argc; i++)
 		if(c -> argv[i][0] == '&')
 		{
@@ -241,7 +241,7 @@ void eval_command(command* c) {
 			c -> argc = i;
 			break;
 		}
-
+*/
 	if(pipeused)
 		pipe(pipefd);
 
@@ -268,9 +268,10 @@ void eval_command(command* c) {
         // TODO: complicated case - the command is both reading and writing
         if(c -> piperead == 1 && c -> pipewrite == 1)
         {
-
+            //dup2(pipefd[1], STDOUT_FILENO);
+            //dup2(pipefd[0], STDIN_FILENO);
         }
-
+/* 
 		// detecting special characters
 		for(int i = 0; i < c -> argc; i++)
 		{
@@ -285,7 +286,7 @@ void eval_command(command* c) {
 				break;
 			};
 		}
-		
+*/
 		if( execvp(c -> argv[0], c -> argv) == -1)
 		{    
 			perror( strerror(errno) );
