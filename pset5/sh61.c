@@ -228,16 +228,7 @@ void eval_command(command* c) {
             c -> argc = i;
             break;
         }
-    /*
-    // checking for '|''
-    for(int i = 0; i < c -> argc; i++)
-        if(c -> argv[i][0] == '|')
-        {
-	  
-	  
-            break;
-        }
-    */
+    
     pid = fork();
     if(pid == 0)
     {
@@ -257,7 +248,6 @@ void eval_command(command* c) {
 	    };
 	}
         
-	printf("argv: %s\n", c -> argv[0]);
 	
         if( execvp(c -> argv[0], c -> argv) == -1)
         {    
@@ -303,10 +293,22 @@ void eval_command_line(const char* s) {
     // Iterate through s string
     int start = 0;
     int length = strlen(s);
+    int insideParenthesis = 0;
     for (int i = 0; i < length; i++)
+   
     {
-        // If it is separated by ; or & ...
-        if (s[i] == ';' || s[i] == '&') 
+        // Check if we are inside of parenthesis
+        if (s[i] == '"') 
+	{
+	    insideParenthesis ++;
+	    if (insideParenthesis == 2) 
+	    {
+	        insideParenthesis = 0;
+	    }
+	}
+        // If we are not inside of a parenthesis and 
+	//it is separated by ; or & ...
+	if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&')) 
 	{
 	    // Create command line from the start of last command line
 	    char *commandLine = (char*) malloc(i - start + 2);
