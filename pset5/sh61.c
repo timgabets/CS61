@@ -295,30 +295,29 @@ void eval_command_line(const char* s) {
     int length = strlen(s);
     int insideParenthesis = 0;
     for (int i = 0; i < length; i++)
-   
     {
         // Check if we are inside of parenthesis
         if (s[i] == '"') 
-	{
-	    insideParenthesis ++;
-	    if (insideParenthesis == 2) 
-	    {
-	        insideParenthesis = 0;
-	    }
-	}
+        {
+            insideParenthesis ++;
+            if (insideParenthesis == 2) 
+	           insideParenthesis = 0;
+            
+        }
+
         // If we are not inside of a parenthesis and 
-	//it is separated by ; or & ...
-	if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&')) 
-	{
-	    // Create command list from the start of last command list
-	    char *commandList = (char*) malloc(i - start + 2);
-	    strncpy(commandList, s + start, i - start + 1);
-	    
-	    // build and execute command list
-	    build_execute(commandList);
-	    free(commandList);
-	    start = i + 1;
-	}
+        //it is separated by ; or & ...
+        if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&')) 
+        {
+            // Create command list from the start of last command list
+            char *commandList = (char*) malloc(i - start + 2);
+            strncpy(commandList, s + start, i - start + 1);
+            
+            // build and execute command list
+            build_execute(commandList);
+            free(commandList);
+            start = i + 1;
+        }
     }
 
     // Create and execute the last comand list also
