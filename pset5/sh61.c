@@ -267,13 +267,13 @@ void eval_command(command* c) {
  * [build_execute description]
  * @param commandLine [command to build and execute]
  */
-void build_execute(char* commandLine) {
+void build_execute(char* commandList) {
     int type;
     char* token;
 
     // build the command
     command* c = command_alloc();
-    while ((commandLine = parse_shell_token(commandLine, &type, &token)) != NULL)
+    while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
         {
 	    command_append_arg(c, token);
 	}
@@ -310,22 +310,22 @@ void eval_command_line(const char* s) {
 	//it is separated by ; or & ...
 	if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&')) 
 	{
-	    // Create command line from the start of last command line
-	    char *commandLine = (char*) malloc(i - start + 2);
-	    strncpy(commandLine, s + start, i - start + 1);
+	    // Create command list from the start of last command list
+	    char *commandList = (char*) malloc(i - start + 2);
+	    strncpy(commandList, s + start, i - start + 1);
 	    
-	    // build and execute command line
-	    build_execute(commandLine);
-	    free(commandLine);
+	    // build and execute command list
+	    build_execute(commandList);
+	    free(commandList);
 	    start = i + 1;
 	}
     }
 
-    // Create and execute the last comand line also
-    char *commandLine = (char*) malloc(length - start + 2);
-    strncpy(commandLine, s + start, length - start + 1);
-    build_execute(commandLine);
-    free(commandLine);
+    // Create and execute the last comand list also
+    char *commandList = (char*) malloc(length - start + 2);
+    strncpy(commandList, s + start, length - start + 1);
+    build_execute(commandList);
+    free(commandList);
    
     /*
     // OLD command execution
