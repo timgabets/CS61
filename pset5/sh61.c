@@ -7,7 +7,7 @@
  * them. The simple commands, background commands, conditional commands (&& and ||),
  * redirections and pipes should be implemented, as well as command interruption. 
  * The shell implements a subset of the bash shell’s syntax, and is generally 
- * compatible with bash for the features they share.
+v * compatible with bash for the features they share.
  * 
  * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
@@ -207,25 +207,45 @@ char* parse_shell_token(char* str, int* type, char** token) {
  */
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
-    int background = 0;
+    //int background = 0;
 
     // checking for '&''
     for(int i = 0; i < c -> argc; i++)
         if(c -> argv[i][0] == '&')
         {
-            background  = 1;
-            c -> argv[i] = NULL;
+            c -> background = 1;
+	    c -> argv[i] = NULL;
             c -> argc = i;
             break;
         }
     
+    // checking for ';''
+    for(int i = 0; i < c -> argc; i++)
+        if(c -> argv[i][0] == ';')
+        {
+	    c -> background = 0;
+	    c -> argv[i] = NULL;
+            c -> argc = i;
+            break;
+        }
+    /*
+    // checking for '|''
+    for(int i = 0; i < c -> argc; i++)
+        if(c -> argv[i][0] == '|')
+        {
+	  
+	  
+            break;
+        }
+    */
     pid = fork();
     if(pid == 0)
     {
         // child
         // detecting special characters
         for(int i = 0; i < c -> argc; i++)
-        {
+	{
+	  
             switch( c -> argv[i][0])
             {
 	        case '<':   
@@ -234,9 +254,11 @@ void eval_command(command* c) {
                 open(c -> argv[i + 1], O_RDONLY);
                 c -> argv[i] = NULL;
                 break;
-	       };
-        }
+	    };
+	}
         
+	printf("argv: %s\n", c -> argv[0]);
+	
         if( execvp(c -> argv[0], c -> argv) == -1)
         {    
             perror( strerror(errno) );
@@ -246,52 +268,66 @@ void eval_command(command* c) {
     }else
     {
         // parent
-        if(background == 0)
+        if(c -> background == 0)
             waitpid(pid, NULL, 0);
     }
 }
+
+/**
+ * [build_execute description]
+ * @param commandLine [command to build and execute]
+ */
+void build_execute(char* commandLine) {
+    int type;
+    char* token;
+
+    // build the command
+    command* c = command_alloc();
+    while ((commandLine = parse_shell_token(commandLine, &type, &token)) != NULL)
+        {
+	    command_append_arg(c, token);
+	}
+    // execute the command
+    if (c->argc)
+        eval_command(c);
+    command_free(c);
+}
+
 
 /**
  * [eval_command_line description]
  * @param s [description]
  */
 void eval_command_line(const char* s) {
-    int type;
-    char* token;
 
-    char** complex_command;         // complex string, (posibly) containing several 
-                                    // elementary commands, delimited by different separators
-    int count = 0;                  // number of elementary commands in a given complex string
-
-    char* p = strtok ((char*)s, ";&|");  
-    while (p != NULL)
+    // Iterate through s string
+    int start = 0;
+    int length = strlen(s);
+    for (int i = 0; i < length; i++)
     {
-        complex_command[count] = malloc(strlen(p));
-        strncpy(complex_command[count], p, strlen(p));
-        count++;
-
-        p = strtok (NULL, ";&|");
+        // If it is separated by ; or & ...
+        if (s[i] == ';' || s[i] == '&') 
+	{
+	    // Create command line from the start of last command line
+	    char *commandLine = (char*) malloc(i - start + 2);
+	    strncpy(commandLine, s + start, i - start + 1);
+	    
+	    // build and execute command line
+	    build_execute(commandLine);
+	    free(commandLine);
+	    start = i + 1;
+	}
     }
 
-    // Iterate through command lines and execute each command
-    for (int i = 0; i < count; ++i)
-    {
-        if (complex_command[i])
-        {
-            command* c = command_alloc();
-            while ((complex_command[i] = parse_shell_token(complex_command[i], &type, &token)) != NULL)
-                command_append_arg(c, token);
-	      
-            // execute the command
-            if (c->argc)
-                eval_command(c);
-            
-            command_free(c);
-        }
-    }
-
-    // OLD command execution
+    // Create and execute the last comand line also
+    char *commandLine = (char*) malloc(length - start + 2);
+    strncpy(commandLine, s + start, length - start + 1);
+    build_execute(commandLine);
+    free(commandLine);
+   
     /*
+    // OLD command execution
+    
     // build the command
     command* c = command_alloc();
     while ((s = parse_shell_token(s, &type, &token)) != NULL)
@@ -303,9 +339,9 @@ void eval_command_line(const char* s) {
     if (c->argc)
         eval_command(c);
     command_free(c);
-*/
+    */
 }
-
+    
 
 /**
  * [set_foreground     Tell the operating system that `p` is the current foreground process
