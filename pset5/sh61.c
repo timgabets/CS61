@@ -28,7 +28,7 @@ v * compatible with bash for the features they share.
 #include <sys/wait.h>
 
 #define TOKEN_CONTROL       0  // token is a control operator,
-                               // and terminates the current command
+							   // and terminates the current command
 #define TOKEN_NORMAL        1  // token is normal command word
 #define TOKEN_REDIRECTION   2  // token is a redirection operator
 
@@ -42,45 +42,49 @@ v * compatible with bash for the features they share.
 //    Returns NULL and sets `*token = NULL` at the end of string.
 
 char* parse_shell_token(char* str, int* type, char** token);
+int pipeused = 0;		// 1 if previous command used pipe for writing. 
+						// Means that current command need to use pipe for reading.
 
 /**
  * Data structure describing a command. Add your own stuff.
  */
 typedef struct command command;
 struct command {
-    int     argc;       // number of arguments
-    char**  argv;       // arguments, terminated by NULL
-    // in a better world all these should be binary flags:
-    int     run;        // should the command be run or not. Useful in case of logical operations - &&, ||, etc.
-    int     background; // 1 if command should be run in background, 0 otherwise
-    int     pipe;       // 1 if the output of command should be redirected, 0 otherwise
+	int     argc;           // number of arguments
+	char**  argv;           // arguments, terminated by NULL
+	// in a better world all these should be binary flags:
+	int     run;            // should the command be run or not. Useful in case of logical operations - &&, ||, etc.
+	int     background;     // 1 if command should be run in background, 0 otherwise
+	int     piperead;       // 1 if command should read from pipe
+	int     pipewrite;      // 1 if command should write to pipe
 };
 
+int pipefd[2];
 
 /**
  * [command_alloc allocates and returns a new command structure.]
  * @return  [new command structure]
  */
 static command* command_alloc(void) {
-    command* c = (command*) malloc(sizeof(command));
-    c->argc = 0;
-    c->argv = NULL;
-    c -> run = 0;
-    c -> background = 0;
-    c -> pipe = 0;
-    return c;
+	command* c = (command*) malloc(sizeof(command));
+	c->argc = 0;
+	c->argv = NULL;
+	c -> run = 0;
+	c -> background = 0;
+	c -> pipewrite = 0;
+	c -> piperead = 0;
+	return c;
 }
-
 
 /**
  * [command_free Free command structure `c`, including all its words.]
  * @param c [command structure]
  */
 static void command_free(command* c) {
-    for (int i = 0; i != c->argc; ++i)
-        free(c->argv[i]);
-    free(c->argv);
-    free(c);
+	for (int i = 0; i != c->argc; ++i)
+		free(c->argv[i]);
+	free(c->argv);
+	free(c);
 }
 
 
@@ -91,19 +95,10 @@ static void command_free(command* c) {
  * @param word [description]
  */
 static void command_append_arg(command* c, char* word) {
-    c->argv = (char**) realloc(c->argv, sizeof(char*) * (c->argc + 2));
-    
-    if(word[0] != '|')
-    {
-        c->argv[c->argc] = word;
-        c->argv[c->argc + 1] = NULL;
-        ++c->argc;
-    }
-    else
-    {
-        c -> pipe = 1;
-        c->argv[c->argc + 1] = NULL;
-    }
+	c->argv = (char**) realloc(c->argv, sizeof(char*) * (c->argc + 2));
+	c->argv[c->argc] = word;
+	c->argv[c->argc + 1] = NULL;
+	++c->argc;
 }
 
 
@@ -111,9 +106,9 @@ static void command_append_arg(command* c, char* word) {
  * COMMAND PARSING
  */
 typedef struct buildstring {
-    char* s;
-    int length;
-    int capacity;
+	char* s;
+	int length;
+	int capacity;
 } buildstring;
 
 
@@ -123,13 +118,13 @@ typedef struct buildstring {
  * @param ch   [description]
  */
 void buildstring_append(buildstring* bstr, int ch) {
-    if (bstr->length == bstr->capacity) {
-        int new_capacity = bstr->capacity ? bstr->capacity * 2 : 32;
-        bstr->s = (char*) realloc(bstr->s, new_capacity);
-        bstr->capacity = new_capacity;
-    }
-    bstr->s[bstr->length] = ch;
-    ++bstr->length;
+	if (bstr->length == bstr->capacity) {
+		int new_capacity = bstr->capacity ? bstr->capacity * 2 : 32;
+		bstr->s = (char*) realloc(bstr->s, new_capacity);
+		bstr->capacity = new_capacity;
+	}
+	bstr->s[bstr->length] = ch;
+	++bstr->length;
 }
 
 
@@ -141,7 +136,7 @@ void buildstring_append(buildstring* bstr, int ch) {
  */
 static inline int isshellspecial(int ch) {
   return ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == ';'
-        || ch == '(' || ch == ')' || ch == '#';
+		|| ch == '(' || ch == ')' || ch == '#';
 }
 
 
@@ -153,64 +148,64 @@ static inline int isshellspecial(int ch) {
  * @return       [description]
  */
 char* parse_shell_token(char* str, int* type, char** token) {
-    buildstring buildtoken = { NULL, 0, 0 };
+	buildstring buildtoken = { NULL, 0, 0 };
 
-    // skip spaces; return NULL and token ";" at end of line
-    while (str && isspace((unsigned char) *str))
-        ++str;
-    if (!str || !*str || *str == '#') {
-        *type = TOKEN_CONTROL;
-        *token = NULL;
-        return NULL;
-    }
+	// skip spaces; return NULL and token ";" at end of line
+	while (str && isspace((unsigned char) *str))
+		++str;
+	if (!str || !*str || *str == '#') {
+		*type = TOKEN_CONTROL;
+		*token = NULL;
+		return NULL;
+	}
 
-    // check for a redirection or special token
-    for (; isdigit((unsigned char) *str); ++str)
-        buildstring_append(&buildtoken, *str);
-    if (*str == '<' || *str == '>') {
-        *type = TOKEN_REDIRECTION;
-        buildstring_append(&buildtoken, *str);
-        if (*str == '>' && str[1] == '>') {
-            buildstring_append(&buildtoken, *str);
-            str += 2;
-        } else
-            ++str;
-    } else if (buildtoken.length == 0
-               && (*str == '&' || *str == '|')
-               && str[1] == *str) {
-        *type = TOKEN_CONTROL;
+	// check for a redirection or special token
+	for (; isdigit((unsigned char) *str); ++str)
+		buildstring_append(&buildtoken, *str);
+	if (*str == '<' || *str == '>') {
+		*type = TOKEN_REDIRECTION;
+		buildstring_append(&buildtoken, *str);
+		if (*str == '>' && str[1] == '>') {
+			buildstring_append(&buildtoken, *str);
+			str += 2;
+		} else
+			++str;
+	} else if (buildtoken.length == 0
+			   && (*str == '&' || *str == '|')
+			   && str[1] == *str) {
+		*type = TOKEN_CONTROL;
 	//printf("//& or or//");
-        buildstring_append(&buildtoken, *str);
-        buildstring_append(&buildtoken, str[1]);
-        str += 2;
-    } else if (buildtoken.length == 0
-               && isshellspecial((unsigned char) *str)) {
-        *type = TOKEN_CONTROL;
-        buildstring_append(&buildtoken, *str);
-        ++str;
-    } else {
-        // it's a normal token
-        *type = TOKEN_NORMAL;
-        int quoted = 0;
-        // Read characters up to the end of the token.
-        while ((*str && quoted)
-               || (*str && !isspace((unsigned char) *str)
-                   && !isshellspecial((unsigned char) *str))) {
-            if (*str == '\"')
-                quoted = !quoted;
-            else if (*str == '\\' && str[1] != '\0') {
-                buildstring_append(&buildtoken, str[1]);
-                ++str;
-            } else
-                buildstring_append(&buildtoken, *str);
-            ++str;
-        }
-    }
+		buildstring_append(&buildtoken, *str);
+		buildstring_append(&buildtoken, str[1]);
+		str += 2;
+	} else if (buildtoken.length == 0
+			   && isshellspecial((unsigned char) *str)) {
+		*type = TOKEN_CONTROL;
+		buildstring_append(&buildtoken, *str);
+		++str;
+	} else {
+		// it's a normal token
+		*type = TOKEN_NORMAL;
+		int quoted = 0;
+		// Read characters up to the end of the token.
+		while ((*str && quoted)
+			   || (*str && !isspace((unsigned char) *str)
+				   && !isshellspecial((unsigned char) *str))) {
+			if (*str == '\"')
+				quoted = !quoted;
+			else if (*str == '\\' && str[1] != '\0') {
+				buildstring_append(&buildtoken, str[1]);
+				++str;
+			} else
+				buildstring_append(&buildtoken, *str);
+			++str;
+		}
+	}
 
-    // store new token and return the location of the next token
-    buildstring_append(&buildtoken, '\0'); // terminating NULL character
-    *token = buildtoken.s;
-    return str;
+	// store new token and return the location of the next token
+	buildstring_append(&buildtoken, '\0'); // terminating NULL character
+	*token = buildtoken.s;
+	return str;
 }
 
 
@@ -220,64 +215,90 @@ char* parse_shell_token(char* str, int* type, char** token) {
  * @param c [description]
  */
 void eval_command(command* c) {
-    pid_t pid = -1;             // process ID for child
+	pid_t pid = -1;             // process ID for child
 
-    // TODO: checking for c -> pipe. 
-    // if c -> pipe is 1, means that the command should
-    // redirect its output not to stdout but at the next available fd.
+	// TODO: checking for c -> pipe. 
+	// if c -> pipe is 1, means that the command should
+	// redirect its output not to stdout but at the next available fd.
 
-    // checking for '&''
-    for(int i = 0; i < c -> argc; i++)
-        if(c -> argv[i][0] == '&')
-        {
-            c -> background = 1;
-	    c -> argv[i] = NULL;
-            c -> argc = i;
-            break;
-        }
-    
-    // checking for ';''
-    for(int i = 0; i < c -> argc; i++)
-        if(c -> argv[i][0] == ';')
-        {
-	    c -> background = 0;
-	    c -> argv[i] = NULL;
-            c -> argc = i;
-            break;
-        }
-    
-    pid = fork();
-    if(pid == 0)
-    {
-        // child
-        // detecting special characters
-        for(int i = 0; i < c -> argc; i++)
-        {
-	  
-            switch( c -> argv[i][0])
-            {
-	        case '<':   
-                // reassigning standard file descriptors:
-                close(STDIN_FILENO);
-                open(c -> argv[i + 1], O_RDONLY);
-                c -> argv[i] = NULL;
-                break;
-            };
-        }
-        
+	// checking for '&''
 	
-        if( execvp(c -> argv[0], c -> argv) == -1)
-        {    
-            perror( strerror(errno) );
-            exit(-1);
+	for(int i = 0; i < c -> argc; i++)
+		if(c -> argv[i][0] == '&')
+		{
+			c -> background = 1;
+		c -> argv[i] = NULL;
+			c -> argc = i;
+			break;
+		}
+	
+	// checking for ';''
+	for(int i = 0; i < c -> argc; i++)
+		if(c -> argv[i][0] == ';')
+		{
+			c -> background = 0;
+			c -> argv[i] = NULL;
+			c -> argc = i;
+			break;
+		}
+
+	if(pipeused)
+		pipe(pipefd);
+
+	pid = fork();
+	if(pid == 0)
+	{
+		// child
+		if(c -> pipewrite)
+		{
+		    close(pipefd[0]); // close unused read end for first child
+			// making stdout the pipe's write end
+			dup2(pipefd[1], STDOUT_FILENO);
+			close(pipefd[1]); // no need keep 2 copies of pipe
+		}
+
+		if(c -> piperead)
+		{
+		    close(pipefd[1]); // close unused write end of second child
+		    // make second child's stdin the pipe's read end
+    		dup2(pipefd[0], STDIN_FILENO);
+    		close(pipefd[0]); // no need keep 2 copies of pipe
+		}
+
+		// detecting special characters
+		for(int i = 0; i < c -> argc; i++)
+		{
+	  
+			switch( c -> argv[i][0])
+			{
+			case '<':   
+				// reassigning standard file descriptors:
+				close(STDIN_FILENO);
+				open(c -> argv[i + 1], O_RDONLY);
+				c -> argv[i] = NULL;
+				break;
+			};
+		}
+		
+		if( execvp(c -> argv[0], c -> argv) == -1)
+		{    
+			perror( strerror(errno) );
+			exit(-1);
+		}
+
+	}else
+	{
+		// parent
+        if(pipeused == 0)
+        {
+            // closing pipe
+            close(pipefd[0]);
+            close(pipefd[1]);
         }
 
-    }else
-    {
-        // parent
-        if(c -> background == 0)
-            waitpid(pid, NULL, 0);
-    }
+		if(c -> background == 0)
+			waitpid(pid, NULL, 0);
+	}
 }
 
 /**
@@ -285,22 +306,35 @@ void eval_command(command* c) {
  * @param commandLine [command to build and execute]
  */
 void build_execute(char* commandList) {
-    int type;
-    char* token;
+	int type;
+	char* token;
 
-    // build the command
-    command* c = command_alloc();
-    while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
-    {
-	    command_append_arg(c, token);
-        
-        if(*token == '|')
-            c -> pipe = 1;
+	// build the command
+	command* c = command_alloc();
+	while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
+	{
+		command_append_arg(c, token);
+		
+		if(pipeused)
+		{
+			c -> piperead = 1;
+			pipeused = 0;
+		}
+
+		if(*token == '|')
+		{
+            c -> pipewrite = 1;
+            c -> background = 1;
+            c -> argc--;
+            c -> argv[ c -> argc ] = NULL;
+            pipeused = 1;
+		}
 	}
-    // execute the command
-    if (c -> argc)
-        eval_command(c);
-    command_free(c);
+	// execute the command
+	if (c -> argc)
+		eval_command(c);
+
+	command_free(c);
 }
 
 
@@ -310,58 +344,42 @@ void build_execute(char* commandList) {
  */
 void eval_command_line(const char* s) {
 
-    // Iterate through s string
-    int start = 0;
-    int length = strlen(s);
-    int insideParenthesis = 0;
-    for (int i = 0; i < length; i++)
-    {
-        // Check if we are inside of parenthesis
-        if (s[i] == '"') 
-        {
-            insideParenthesis ++;
-            if (insideParenthesis == 2) 
-	           insideParenthesis = 0;
-        }
+	// Iterate through s string
+	int start = 0;
+	int length = strlen(s);
+	int insideParenthesis = 0;
+	for (int i = 0; i < length; i++)
+	{
+		// Check if we are inside of parenthesis
+		if (s[i] == '"') 
+		{
+			insideParenthesis ++;
+			if (insideParenthesis == 2) 
+			   insideParenthesis = 0;
+		}
 
-        // If we are not inside of a parenthesis and 
-        //it is separated by ; or & ...
-        if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&' || s[i] == '|')) 
-        {
-            // Create command list from the start of last command list
-            char *commandList = (char*) malloc(i - start + 2);
-            strncpy(commandList, s + start, i - start + 1);
+		// If we are not inside of a parenthesis and 
+		//it is separated by ; or & ...
+		if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&' || s[i] == '|')) 
+		{
+			// Create command list from the start of last command list
+			char *commandList = (char*) malloc(i - start + 2);
+			strncpy(commandList, s + start, i - start + 1);
 
-            // build and execute command list
-            build_execute(commandList);
-            free(commandList);
-            start = i + 1;
-        }
-    }
+			// build and execute command list
+			build_execute(commandList);
+			free(commandList);
+			start = i + 1;
+		}
+	}
 
-    // Create and execute the last comand list also
-    char* commandList = (char*) malloc(length - start + 2);
-    strncpy(commandList, s + start, length - start + 1);
-    build_execute(commandList);
-    free(commandList);
-   
-    /*
-    // OLD command execution
-    
-    // build the command
-    command* c = command_alloc();
-    while ((s = parse_shell_token(s, &type, &token)) != NULL)
-    {
-        command_append_arg(c, token);
-    }
-
-    // execute the command
-    if (c->argc)
-        eval_command(c);
-    command_free(c);
-    */
+	// Create and execute the last comand list also
+	char* commandList = (char*) malloc(length - start + 2);
+	strncpy(commandList, s + start, length - start + 1);
+	build_execute(commandList);
+	free(commandList);
 }
-    
+	
 
 /**
  * [set_foreground     Tell the operating system that `p` is the current foreground process
@@ -371,86 +389,86 @@ void eval_command_line(const char* s) {
  * @return   [description]
  */
 int set_foreground(pid_t p) {
-    // YOU DO NOT NEED TO UNDERSTAND THIS.
-    static int ttyfd = -1;
-    if (ttyfd < 0) {
-        // We need a fd for the current terminal, so open /dev/tty.
-        int fd = open("/dev/tty", O_RDWR);
-        assert(fd >= 0);
-        // Re-open to a large file descriptor (>=10) so that pipes and such
-        // use the expected small file descriptors.
-        ttyfd = fcntl(fd, F_DUPFD, 10);
-        assert(ttyfd >= 0);
-        close(fd);
-        // The /dev/tty file descriptor should be closed in child processes.
-        fcntl(ttyfd, F_SETFD, FD_CLOEXEC);
-    }
-    // `p` is in its own process group.
-    int r = setpgid(p, p);
-    if (r < 0)
-        return r;
-    // The terminal's controlling process group is `p` (so processes in group
-    // `p` can output to the screen, read from the keyboard, etc.).
-    return tcsetpgrp(ttyfd, p);
+	// YOU DO NOT NEED TO UNDERSTAND THIS.
+	static int ttyfd = -1;
+	if (ttyfd < 0) {
+		// We need a fd for the current terminal, so open /dev/tty.
+		int fd = open("/dev/tty", O_RDWR);
+		assert(fd >= 0);
+		// Re-open to a large file descriptor (>=10) so that pipes and such
+		// use the expected small file descriptors.
+		ttyfd = fcntl(fd, F_DUPFD, 10);
+		assert(ttyfd >= 0);
+		close(fd);
+		// The /dev/tty file descriptor should be closed in child processes.
+		fcntl(ttyfd, F_SETFD, FD_CLOEXEC);
+	}
+	// `p` is in its own process group.
+	int r = setpgid(p, p);
+	if (r < 0)
+		return r;
+	// The terminal's controlling process group is `p` (so processes in group
+	// `p` can output to the screen, read from the keyboard, etc.).
+	return tcsetpgrp(ttyfd, p);
 }
 
 
 int main(int argc, char* argv[]) {
-    FILE* command_file = stdin;
-    int quiet = 0;
-    int r = 0;
+	FILE* command_file = stdin;
+	int quiet = 0;
+	int r = 0;
 
-    // Check for '-q' option: be quiet (print no prompts)
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) {
-        quiet = 1;
-        --argc, ++argv;
-    }
+	// Check for '-q' option: be quiet (print no prompts)
+	if (argc > 1 && strcmp(argv[1], "-q") == 0) {
+		quiet = 1;
+		--argc, ++argv;
+	}
 
-    // Check for filename option: read commands from file
-    if (argc > 1) {
-        command_file = fopen(argv[1], "rb");
-        if (!command_file) {
-            perror(argv[1]);
-            exit(1);
-        }
-    }
+	// Check for filename option: read commands from file
+	if (argc > 1) {
+		command_file = fopen(argv[1], "rb");
+		if (!command_file) {
+			perror(argv[1]);
+			exit(1);
+		}
+	}
 
-    char buf[BUFSIZ];
-    int bufpos = 0;
-    int needprompt = 1;
+	char buf[BUFSIZ];
+	int bufpos = 0;
+	int needprompt = 1;
 
-    while (!feof(command_file)) {
-        // Print the prompt at the beginning of the line
-        if (needprompt && !quiet) {
-            printf("sh61[%d]$ ", getpid());
-            fflush(stdout);
-            needprompt = 0;
-        }
+	while (!feof(command_file)) {
+		// Print the prompt at the beginning of the line
+		if (needprompt && !quiet) {
+			printf("sh61[%d]$ ", getpid());
+			fflush(stdout);
+			needprompt = 0;
+		}
 
-        // Read a string, checking for error or EOF
-        if (fgets(&buf[bufpos], BUFSIZ - bufpos, command_file) == NULL) {
-            if (ferror(command_file) && errno == EINTR) {
-                // ignore EINTR errors
-                clearerr(command_file);
-                buf[bufpos] = 0;
-            } else {
-                if (ferror(command_file))
-                    perror("sh61");
-                break;
-            }
-        }
+		// Read a string, checking for error or EOF
+		if (fgets(&buf[bufpos], BUFSIZ - bufpos, command_file) == NULL) {
+			if (ferror(command_file) && errno == EINTR) {
+				// ignore EINTR errors
+				clearerr(command_file);
+				buf[bufpos] = 0;
+			} else {
+				if (ferror(command_file))
+					perror("sh61");
+				break;
+			}
+		}
 
-        // If a complete command line has been provided, run it
-        bufpos = strlen(buf);
-        if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
-            eval_command_line(buf);
-            bufpos = 0;
-            needprompt = 1;
-        }
+		// If a complete command line has been provided, run it
+		bufpos = strlen(buf);
+		if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
+			eval_command_line(buf);
+			bufpos = 0;
+			needprompt = 1;
+		}
 
-        // Handle zombie processes and/or interrupt requests
-        // Your code here!
-    }
+		// Handle zombie processes and/or interrupt requests
+		// Your code here!
+	}
 
-    return 0;
+	return 0;
 }
