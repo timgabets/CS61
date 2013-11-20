@@ -216,138 +216,128 @@ char* parse_shell_token(char* str, int* type, char** token) {
  * @param c [description]
  */
 void eval_command(command* c) {
-	pid_t pid = -1;             // process ID for child
+    pid_t pid = -1;             // process ID for child
 
-	// checking for '&''
-	for(int i = 0; i < c -> argc; i++)
-		if(c -> argv[i][0] == '&')
-		{
-			c -> background = 1;
-			c -> argv[i] = NULL;
-			c -> argc = i;
-			break;
-		}
-	
-	// checking for ';''
-	for(int i = 0; i < c -> argc; i++)
-		if(c -> argv[i][0] == ';')
-		{
-			c -> background = 0;
-			c -> argv[i] = NULL;
-			c -> argc = i;
-			break;
-		}
-
-	
-	//if(pipeused)
-	if(c -> pipewrite == 1)
-	  pipe(c->pipefd);
-
-	pid = fork();
-	if(pid == 0)
+    // checking for '&''
+    for(int i = 0; i < c -> argc; i++)
+    {       
+        if(c -> argv[i][0] == '&')
 	{
-		// child
-	  if(c -> pipewrite == 1 && c -> piperead == 0)
-	    //if(c -> pipewrite == 1)
-	  {
-	    //printf("write c: %p lc: %p\n", c, lc);
-	    //c -> background = 1;
-	    close(c->pipefd[0]); // close unused read end for first child
-			// making stdout the pipe's write end
-			dup2(c->pipefd[1], STDOUT_FILENO);
-			close(c->pipefd[1]); // no need keep 2 copies of pipe
-		}
-
-	  if(c -> piperead == 1 && c -> pipewrite == 0)
-		{
-		  //printf("read  c: %p lc: %p\n", c, lc);
-		  //c -> background = 1;
-		  command *lastCommand = (command*)lc; 
-		    close(lastCommand->pipefd[1]); // close unused write end of second child
-		    // make second child's stdin the pipe's read end
-    		dup2(lastCommand->pipefd[0], STDIN_FILENO);
-    		close(lastCommand->pipefd[0]); // no need keep 2 copies of pipe
-		}
-
-        // TODO: complicated case - the command is both reading and writing
-        if(c -> piperead == 1 && c -> pipewrite == 1)
-	{
-	  //printf("both  c: %p lc: %p\n", c, lc);
-	  //c -> background = 1;
-	  close(c->pipefd[0]); // close unused read end for first child
-	  // making stdout the pipe's write end
-	  dup2(c->pipefd[1], STDOUT_FILENO);
-	  close(c->pipefd[1]); // no need keep 2 copies of pipe
+	    c -> background = 1;
+	    c -> argv[i] = NULL;
+	    c -> argc = i;
+	    break;
+	 }
+    }
 	
-	  command *lastCommand = (command*)lc; 
-	  close(lastCommand->pipefd[1]); // close unused write end of second child
-	  // make second child's stdin the pipe's read end
-	  dup2(lastCommand->pipefd[0], STDIN_FILENO);
-	  close(lastCommand->pipefd[0]); // no need keep 2 copies of pipe
-	  
-	  }
- 
-		// detecting special characters
-		for(int i = 0; i < c -> argc; i++)
-		{
-	  
-			switch( c -> argv[i][0])
-			{
-			case '<': 
-			        // reassigning standard file descriptors:
-				close(STDIN_FILENO);
-				open(c -> argv[i + 1], O_RDONLY);
-				c -> argv[i] = NULL;
-				break;
-			
-			case '>':   
-				// reassigning standard file descriptors:
-				close(STDOUT_FILENO);
-				open(c -> argv[i + 1], O_RDONLY);
-				c -> argv[i] = NULL;
-				break;
-			};
-		}
-
-		if( execvp(c -> argv[0], c -> argv) == -1)
-		{    
-			perror( strerror(errno) );
-			exit(-1);
-		}
-
-	}else
+    // checking for ';''
+    for(int i = 0; i < c -> argc; i++)
+    {
+        if(c -> argv[i][0] == ';')
 	{
-        // parent
-	  /*
-	if(c -> piperead == 1 && c -> pipewrite == 1)
-	//if(pipeused == 0)
-        {
-	  command *lastCommand = (command*)llc; 
-	  //if(lastCommand -> pipewrite == 1)
-	//if(pipeused == 0)
-	  //{  
-            // closing pipe
+	    c -> background = 0;
+	    c -> argv[i] = NULL;
+	    c -> argc = i;
+	    break;
+	}
+    }
+
+    // The command will write to a pipe...
+    // use the pipefd of the command
+    if(c -> pipewrite == 1)
+        pipe(c->pipefd);
+
+    pid = fork();
+    if(pid == 0)
+    {
+        // Only write to pipe...
+        // use command fd's with apropiate connections
+        if(c -> pipewrite == 1 && c -> piperead == 0)
+	{
+	    close(c->pipefd[0]); 
+	    dup2(c->pipefd[1], STDOUT_FILENO);
+	    close(c->pipefd[1]); 
+	}
+
+	// Only read to pipe...
+	// use last command fd's with apropiate connections
+	if(c -> piperead == 1 && c -> pipewrite == 0)
+	{
+	    command *lastCommand = (command*)lc; 
+	    close(lastCommand->pipefd[1]); 
+	    dup2(lastCommand->pipefd[0], STDIN_FILENO);
 	    close(lastCommand->pipefd[0]);
-	    close(lastCommand->pipefd[1]);
-	    //command_free(lastCommand);
-	    //llc = NULL;
-	    } else*/ if(c -> piperead == 1)
+	}
+
+	// Both read and write to pipe...
+	// use command fd's to write with apropiate connections
+	// use last command fd's to read with apropiate connections
+	if(c -> piperead == 1 && c -> pipewrite == 1)
 	{
+	    // Write...
+	    close(c->pipefd[0]); 
+	    dup2(c->pipefd[1], STDOUT_FILENO);
+	    close(c->pipefd[1]); 
+	    
+	    // Read...
+	    command *lastCommand = (command*)lc; 
+	    close(lastCommand->pipefd[1]); 
+	    dup2(lastCommand->pipefd[0], STDIN_FILENO);
+	    close(lastCommand->pipefd[0]); 
+	}
+ 
+	// detecting special characters
+	for(int i = 0; i < c -> argc; i++)
+	{
+	  
+	    switch( c -> argv[i][0])
+	    {
+	        case '<': 
+		    // reassigning standard file descriptors:
+		    close(STDIN_FILENO);
+		    open(c -> argv[i + 1], O_RDONLY);
+		    c -> argv[i] = NULL;
+		    break;
+			
+	        case '>':   
+		    // reassigning standard file descriptors:
+		    close(STDOUT_FILENO);
+		    open(c -> argv[i + 1], O_RDONLY);
+		    c -> argv[i] = NULL;
+		    break;
+	    };
+	}
+
+	if( execvp(c -> argv[0], c -> argv) == -1)
+	{    
+	    perror( strerror(errno) );
+	    exit(-1);
+	}
+
+    }else
+    {
+        // If command reads from a pipe...
+        if(c -> piperead == 1)
+	{
+	    // and last command writes to a pipe...
 	    command *lastCommand = (command*)lc;
 	    if(lastCommand -> pipewrite == 1)
-	      {     
-		lc = (char*)c;
+	    {     
+	        // Make current command last command pointer
+	        lc = (char*)c;
+		  
+		// Close last commands fds
 		close(lastCommand->pipefd[0]);
 		close(lastCommand->pipefd[1]);
+
+		// free last commands
 		command_free(lastCommand);
-		//lc = NULL;
-	      }
-	 }
+	    }
+	}
  	          
-        if(c -> background == 0)
-            waitpid(pid, NULL, 0);
+	if(c -> background == 0)
+	    waitpid(pid, NULL, 0);
     }
-	//printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n");
 }
 
 /**
@@ -362,12 +352,11 @@ void build_execute(char* commandList) {
     command* c = command_alloc();
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
-        //printf("token: %s\n", token);
         command_append_arg(c, token);
 		
         if(pipeused)
         {
-            // previos command used pipe for writing
+	    // previous command used pipe for writing
             c -> piperead = 1;
             pipeused = 0;
         }
@@ -378,20 +367,26 @@ void build_execute(char* commandList) {
             c -> argc--;
             c -> argv[ c -> argc ] = NULL;
             pipeused = 1;
-	    //llc = lc;
+
+	    // If the command will just write to a pipe
+	    // (not read and write) make current command last command pointer
 	    if (c->piperead != 1)
 	      lc = (char*)c;
 
+	    // BUGFIX: some arguments like ps T passed some weird extra
+	    // parameters on pipes. Execute command here to avoid them. 
 	    if (c -> argc)
 	      eval_command(c);
 	    return;
         }
     }
+
     // execute the command
     if (c -> argc)
         eval_command(c);
+    // If command does not write to a pipe... free it. 
     if (c->pipewrite != 1)
-      command_free(c);
+        command_free(c);
 }
 
 
@@ -401,45 +396,41 @@ void build_execute(char* commandList) {
  */
 void eval_command_line(const char* s) {
 
-	// Iterate through s string
-	int start = 0;
-	int length = strlen(s);
-	int insideParenthesis = 0;
-	for (int i = 0; i < length; i++)
+    // Iterate through s string
+    int start = 0;
+    int length = strlen(s);
+    int insideParenthesis = 0;
+    for (int i = 0; i < length; i++)
+    {
+        // Check if we are inside of parenthesis
+        if (s[i] == '"') 
 	{
-	  //printf("char %i: %c\n", i,s[i] );
-	        // Check if we are inside of parenthesis
-		if (s[i] == '"') 
-		{
-			insideParenthesis ++;
-			if (insideParenthesis == 2) 
-			   insideParenthesis = 0;
-		}
-
-		// If we are not inside of a parenthesis and 
-		//it is separated by ; or & ...
-		if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&' || s[i] == '|')) 
-		{
-			// Create command list from the start of last command list
-
-			char *commandList = (char*) malloc(i - start + 2);
-			memset(commandList, '\0', sizeof(i - start + 2));
-			strncpy(commandList, s + start, i - start + 1);
-			
-			//printf("commandList: %s from: %i to %i\n", commandList, start, i - start);
-			// build and execute command list
-			build_execute(commandList);
-			free(commandList);
-			start = i + 1;
-		}
+	    insideParenthesis ++;
+	    if (insideParenthesis == 2) 
+	        insideParenthesis = 0;
 	}
 
-	// Create and execute the last comand list also
-	char* commandList = (char*) malloc(length - start + 2);
-	strncpy(commandList, s + start, length - start + 1);
-	//printf("commandList: %s\n", commandList);
-	build_execute(commandList);
-	free(commandList);
+	// If we are not inside of a parenthesis and 
+	//it is separated by ; or & or |...
+	if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&' || s[i] == '|')) 
+	{
+	    // Create command list from the start of last command list
+	    char *commandList = (char*) malloc(i - start + 2);
+	    //memset(commandList, '\0', sizeof(i - start + 2));
+	    strncpy(commandList, s + start, i - start + 1);
+			
+	    // build and execute command list
+	    build_execute(commandList);
+	    free(commandList);
+	    start = i + 1;
+	}
+    }
+
+    // Create and execute the last comand list
+    char* commandList = (char*) malloc(length - start + 2);
+    strncpy(commandList, s + start, length - start + 1);
+    build_execute(commandList);
+    free(commandList);
 }
 	
 
