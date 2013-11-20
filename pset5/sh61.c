@@ -57,9 +57,12 @@ struct command {
 	int     background;     // 1 if command should be run in background, 0 otherwise
 	int     piperead;       // 1 if command should read from pipe
 	int     pipewrite;      // 1 if command should write to pipe
+  int pipefd[2];
 };
 
-int pipefd[2];
+char *lc = 0x0;
+//char *llc;
+//int pipefd[2];
 
 /**
  * [command_alloc allocates and returns a new command structure.]
@@ -221,7 +224,6 @@ void eval_command(command* c) {
 	// if c -> pipe is 1, means that the command should
 	// redirect its output not to stdout but at the next available fd.
 
-/* Commented for debugging
 	// checking for '&''
 	for(int i = 0; i < c -> argc; i++)
 		if(c -> argv[i][0] == '&')
@@ -241,54 +243,82 @@ void eval_command(command* c) {
 			c -> argc = i;
 			break;
 		}
-*/
+
     // BUG: in case of comlpicated pipes, this will cause fail,
-    // because yet another pipe should be used. 
+    // because yet another pipe should be used.
+	//printf("start c: %p lc: %p\n", c, lc);
+	
+	
+	
 	if(pipeused)
-		pipe(pipefd);
+		pipe(c->pipefd);
 
 	pid = fork();
 	if(pid == 0)
 	{
 		// child
 		if(c -> pipewrite == 1 && c -> piperead == 0)
-		{
-		    close(pipefd[0]); // close unused read end for first child
+	  //if(c -> pipewrite == 1)
+	  {
+	    //printf("write c: %p lc: %p\n", c, lc);
+	    //c -> background = 1;
+	    close(c->pipefd[0]); // close unused read end for first child
 			// making stdout the pipe's write end
-			dup2(pipefd[1], STDOUT_FILENO);
-			close(pipefd[1]); // no need keep 2 copies of pipe
+			dup2(c->pipefd[1], STDOUT_FILENO);
+			close(c->pipefd[1]); // no need keep 2 copies of pipe
 		}
 
-		if(c -> piperead == 1 && c -> pipewrite == 0)
+	  if(c -> piperead == 1 && c -> pipewrite == 0)
 		{
-		    close(pipefd[1]); // close unused write end of second child
+		  //printf("read  c: %p lc: %p\n", c, lc);
+		  //c -> background = 1;
+		  command *lastCommand = (command*)lc; 
+		    close(lastCommand->pipefd[1]); // close unused write end of second child
 		    // make second child's stdin the pipe's read end
-    		dup2(pipefd[0], STDIN_FILENO);
-    		close(pipefd[0]); // no need keep 2 copies of pipe
+    		dup2(lastCommand->pipefd[0], STDIN_FILENO);
+    		close(lastCommand->pipefd[0]); // no need keep 2 copies of pipe
 		}
 
         // TODO: complicated case - the command is both reading and writing
         if(c -> piperead == 1 && c -> pipewrite == 1)
-        {
-            //dup2(pipefd[1], STDOUT_FILENO);
-            //dup2(pipefd[0], STDIN_FILENO);
-        }
-/* 
+	{
+	  //printf("both  c: %p lc: %p\n", c, lc);
+	  //c -> background = 1;
+	  close(c->pipefd[0]); // close unused read end for first child
+	  // making stdout the pipe's write end
+	  dup2(c->pipefd[1], STDOUT_FILENO);
+	  close(c->pipefd[1]); // no need keep 2 copies of pipe
+	
+	  command *lastCommand = (command*)lc; 
+	  close(lastCommand->pipefd[1]); // close unused write end of second child
+	  // make second child's stdin the pipe's read end
+	  dup2(lastCommand->pipefd[0], STDIN_FILENO);
+	  close(lastCommand->pipefd[0]); // no need keep 2 copies of pipe
+	  
+	  }
+ 
 		// detecting special characters
 		for(int i = 0; i < c -> argc; i++)
 		{
 	  
 			switch( c -> argv[i][0])
 			{
-			case '<':   
-				// reassigning standard file descriptors:
+			case '<': 
+			        // reassigning standard file descriptors:
 				close(STDIN_FILENO);
+				open(c -> argv[i + 1], O_RDONLY);
+				c -> argv[i] = NULL;
+				break;
+			
+			case '>':   
+				// reassigning standard file descriptors:
+				close(STDOUT_FILENO);
 				open(c -> argv[i + 1], O_RDONLY);
 				c -> argv[i] = NULL;
 				break;
 			};
 		}
-*/
+
 		if( execvp(c -> argv[0], c -> argv) == -1)
 		{    
 			perror( strerror(errno) );
@@ -298,16 +328,36 @@ void eval_command(command* c) {
 	}else
 	{
         // parent
-        if(pipeused == 0)
+	  /*
+	if(c -> piperead == 1 && c -> pipewrite == 1)
+	//if(pipeused == 0)
         {
+	  command *lastCommand = (command*)llc; 
+	  //if(lastCommand -> pipewrite == 1)
+	//if(pipeused == 0)
+	  //{  
             // closing pipe
-            close(pipefd[0]);
-            close(pipefd[1]);
-        }
-        
+	    close(lastCommand->pipefd[0]);
+	    close(lastCommand->pipefd[1]);
+	    //command_free(lastCommand);
+	    //llc = NULL;
+	    } else*/ if(c -> piperead == 1)
+	{
+	    command *lastCommand = (command*)lc;
+	    if(lastCommand -> pipewrite == 1)
+	      {     
+		lc = (char*)c;
+		close(lastCommand->pipefd[0]);
+		close(lastCommand->pipefd[1]);
+		//command_free(lastCommand);
+		//lc = NULL;
+	      }
+	 }
+ 	          
         if(c -> background == 0)
             waitpid(pid, NULL, 0);
     }
+	//printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n");
 }
 
 /**
@@ -322,6 +372,7 @@ void build_execute(char* commandList) {
     command* c = command_alloc();
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
+      //printf("token: %s\n", token);
         command_append_arg(c, token);
 		
         if(pipeused)
@@ -337,13 +388,16 @@ void build_execute(char* commandList) {
             c -> argc--;
             c -> argv[ c -> argc ] = NULL;
             pipeused = 1;
+	    //llc = lc;
+	    if (c->piperead != 1)
+	      lc = (char*)c;
         }
     }
     // execute the command
     if (c -> argc)
         eval_command(c);
-
-    command_free(c);
+    //if (c->pipewrite != 1)
+      //command_free(c);
 }
 
 
