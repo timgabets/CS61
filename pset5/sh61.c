@@ -67,6 +67,7 @@ struct command {
     int     pipewrite;         // command | ...
     int     input_redirected;  // commmand < ...
     int     output_redirected; // command > ...
+    int     stderr_redirected; // command 2> ...
     int     pipefd[2];         // file descriptors for pipe
 };
 
@@ -86,6 +87,7 @@ static command* command_alloc(void) {
 	c -> piperead = 0;
     c -> input_redirected = 0;
     c -> output_redirected = 0;
+    c -> stderr_redirected = 0;
 	return c;
 }
 
@@ -203,6 +205,10 @@ char* parse_shell_token(char* str, int* type, char** token) {
 		buildstring_append(&buildtoken, *str);
 		++str;
 
+    } else if (buildtoken.length == 0
+               && *str == '2' && str[1] == '>'){
+        *type = TOKEN_REDIRECTION;
+        buildstring_append(&buildtoken, *str);
 	} else {
 		// it's a normal token
 		*type = TOKEN_NORMAL;
@@ -300,14 +306,29 @@ void eval_command(command* c) {
                 perror( strerror(errno) );
                 exit(-1);
             }
+            c -> argv[c -> argc - 1] = NULL;
+            c -> argc--;
         }
 
-            // Finaly, executing
-            if( execvp(c -> argv[0], c -> argv) == -1)
-            {    
+        if(c -> stderr_redirected)          
+        {
+            // reassigning standard file descriptors:
+            close(STDERR_FILENO);
+            if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
+            {
                 perror( strerror(errno) );
                 exit(-1);
             }
+            c -> argv[c -> argc - 1] = NULL;
+            c -> argc--;
+        }
+
+        // Finaly, executing
+        if( execvp(c -> argv[0], c -> argv) == -1)
+        {    
+            perror( strerror(errno) );
+            exit(-1);
+        }
 
     }else
     {
@@ -398,8 +419,15 @@ void build_execute(char* commandList) {
                 case '<':
                     c -> input_redirected = 1;
                     c -> argc--;
-                    break;            
+                    break;  
             }
+
+            if(strcmp(token, "2>") == 0 )
+            {
+                c -> stderr_redirected = 1;
+                c -> argc--;
+            }
+
         } // end if TOKEN_REDIRECTION
 
         if(type == TOKEN_CONTROL)   // 0
