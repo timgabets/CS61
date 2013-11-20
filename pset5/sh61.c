@@ -57,12 +57,10 @@ struct command {
 	int     background;     // 1 if command should be run in background, 0 otherwise
 	int     piperead;       // 1 if command should read from pipe
 	int     pipewrite;      // 1 if command should write to pipe
-  int pipefd[2];
+        int     pipefd[2];      // file descriptors for pipe
 };
 
-char *lc = 0x0;
-//char *llc;
-//int pipefd[2];
+char *lc;    // pointer to last command
 
 /**
  * [command_alloc allocates and returns a new command structure.]
@@ -220,16 +218,12 @@ char* parse_shell_token(char* str, int* type, char** token) {
 void eval_command(command* c) {
 	pid_t pid = -1;             // process ID for child
 
-	// TODO: checking for c -> pipe. 
-	// if c -> pipe is 1, means that the command should
-	// redirect its output not to stdout but at the next available fd.
-
 	// checking for '&''
 	for(int i = 0; i < c -> argc; i++)
 		if(c -> argv[i][0] == '&')
 		{
 			c -> background = 1;
-		c -> argv[i] = NULL;
+			c -> argv[i] = NULL;
 			c -> argc = i;
 			break;
 		}
@@ -244,21 +238,17 @@ void eval_command(command* c) {
 			break;
 		}
 
-    // BUG: in case of comlpicated pipes, this will cause fail,
-    // because yet another pipe should be used.
-	//printf("start c: %p lc: %p\n", c, lc);
 	
-	
-	
-	if(pipeused)
-		pipe(c->pipefd);
+	//if(pipeused)
+	if(c -> pipewrite == 1)
+	  pipe(c->pipefd);
 
 	pid = fork();
 	if(pid == 0)
 	{
 		// child
-		if(c -> pipewrite == 1 && c -> piperead == 0)
-	  //if(c -> pipewrite == 1)
+	  if(c -> pipewrite == 1 && c -> piperead == 0)
+	    //if(c -> pipewrite == 1)
 	  {
 	    //printf("write c: %p lc: %p\n", c, lc);
 	    //c -> background = 1;
@@ -349,7 +339,7 @@ void eval_command(command* c) {
 		lc = (char*)c;
 		close(lastCommand->pipefd[0]);
 		close(lastCommand->pipefd[1]);
-		//command_free(lastCommand);
+		command_free(lastCommand);
 		//lc = NULL;
 	      }
 	 }
@@ -372,7 +362,7 @@ void build_execute(char* commandList) {
     command* c = command_alloc();
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
-      //printf("token: %s\n", token);
+        //printf("token: %s\n", token);
         command_append_arg(c, token);
 		
         if(pipeused)
@@ -391,13 +381,17 @@ void build_execute(char* commandList) {
 	    //llc = lc;
 	    if (c->piperead != 1)
 	      lc = (char*)c;
+
+	    if (c -> argc)
+	      eval_command(c);
+	    return;
         }
     }
     // execute the command
     if (c -> argc)
         eval_command(c);
-    //if (c->pipewrite != 1)
-      //command_free(c);
+    if (c->pipewrite != 1)
+      command_free(c);
 }
 
 
@@ -413,7 +407,8 @@ void eval_command_line(const char* s) {
 	int insideParenthesis = 0;
 	for (int i = 0; i < length; i++)
 	{
-		// Check if we are inside of parenthesis
+	  //printf("char %i: %c\n", i,s[i] );
+	        // Check if we are inside of parenthesis
 		if (s[i] == '"') 
 		{
 			insideParenthesis ++;
@@ -426,9 +421,12 @@ void eval_command_line(const char* s) {
 		if ((insideParenthesis != 1) && (s[i] == ';' || s[i] == '&' || s[i] == '|')) 
 		{
 			// Create command list from the start of last command list
-			char *commandList = (char*) malloc(i - start + 2);
-			strncpy(commandList, s + start, i - start + 1);
 
+			char *commandList = (char*) malloc(i - start + 2);
+			memset(commandList, '\0', sizeof(i - start + 2));
+			strncpy(commandList, s + start, i - start + 1);
+			
+			//printf("commandList: %s from: %i to %i\n", commandList, start, i - start);
 			// build and execute command list
 			build_execute(commandList);
 			free(commandList);
@@ -439,6 +437,7 @@ void eval_command_line(const char* s) {
 	// Create and execute the last comand list also
 	char* commandList = (char*) malloc(length - start + 2);
 	strncpy(commandList, s + start, length - start + 1);
+	//printf("commandList: %s\n", commandList);
 	build_execute(commandList);
 	free(commandList);
 }
