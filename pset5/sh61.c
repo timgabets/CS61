@@ -257,7 +257,7 @@ void eval_command(command* c) {
     {
         // reassigning standard file descriptors:
         close(STDOUT_FILENO);
-        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
+        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY, 0664 ) == -1)
         {
             perror( strerror(errno) );
             exit(-1);
@@ -285,7 +285,7 @@ void eval_command(command* c) {
     {
         // reassigning standard file descriptors:
         close(STDERR_FILENO);
-        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
+        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY, 0664 ) == -1)
         {
             perror( strerror(errno) );
             exit(-1);
@@ -500,12 +500,10 @@ void build_execute(char* commandList) {
                     c -> argc--;
                     c -> argv[ c -> argc ] = NULL;
                     
-		    if (c -> argc)
+                    if (c -> argc)
                         eval_command(c);
-		    
-		    return;
-		    //break;
-		
+		      
+                    return;
             }
         } // end if TOKEN_CONTROL
 
