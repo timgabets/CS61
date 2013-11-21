@@ -244,26 +244,80 @@ char* parse_shell_token(char* str, int* type, char** token) {
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
 
-    // The command will write to a pipe...
-    // use the pipefd of the command
+    // Saving file descriptors
+    int stdin_copy = dup(STDIN_FILENO);
+    int stdout_copy = dup(STDOUT_FILENO);
+    int stderr_copy = dup(STDERR_FILENO);
+
     if(c -> pipewrite == 1)
         pipe(c->pipefd);
+
+    // command > ...
+    if(c -> output_redirected)          
+    {
+        // reassigning standard file descriptors:
+        close(STDOUT_FILENO);
+        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
+        {
+            perror( strerror(errno) );
+            exit(-1);
+        }
+        c -> argv[c -> argc - 1] = NULL;
+        c -> argc--;
+    }
+
+    // command < ...
+    if(c -> input_redirected)
+    {
+        // reassigning standard file descriptors:
+        close(STDIN_FILENO);
+        if(open(c -> argv[c -> argc - 1], O_CREAT | O_RDONLY ) == -1)
+        {
+            perror( strerror(errno) );
+            exit(-1);
+        }
+        c -> argv[c -> argc - 1] = NULL;
+        c -> argc--;
+    }
+
+    // command 2> ...
+    if(c -> stderr_redirected)          
+    {
+        // reassigning standard file descriptors:
+        close(STDERR_FILENO);
+        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
+        {
+            perror( strerror(errno) );
+            exit(-1);
+        }
+        c -> argv[c -> argc - 1] = NULL;
+        c -> argc--;
+    }
+
+    /**
+     * TODO: Here should be the pipe code
+     */
+    
 
     if( strcmp(c -> argv[0], "cd") != 0 )
     {
         pid = fork();
         if(pid == 0)
-        {
-
-	    // Write to pipe...
+        {       
+            /**
+             * TODO: The pipe code should be moved up, and placed somewhere before fork.
+             * Only exec() should be left here i the fork.
+             */
+            
+            // Write to pipe...
             // use command fd's with apropiate connections
-	    if(c -> pipewrite == 1)
+            if(c -> pipewrite == 1)
             {
-    	       close(c->pipefd[0]); 
-    	       dup2(c->pipefd[1], STDOUT_FILENO);
-    	       close(c->pipefd[1]); 
+                close(c->pipefd[0]); 
+                dup2(c->pipefd[1], STDOUT_FILENO);
+                close(c->pipefd[1]); 
             }
-    
+
             // Read from pipe...
             // use last command fd's with apropiate connections
             if(c -> piperead == 1)
@@ -272,58 +326,19 @@ void eval_command(command* c) {
                 close(lastCommand->pipefd[1]); 
                 dup2(lastCommand->pipefd[0], STDIN_FILENO);
                 close(lastCommand->pipefd[0]);
-
-		// If it is an in between pipe (read & write)...
-		// Update the last command pointer.
-		if(c -> piperead == 1 && c -> pipewrite == 1)
-		{
-		    command *lastCommand = (command*)lc; 
-		}
-	    }
-
-            // command < ...
-            if(c -> input_redirected)
-            {
-                // reassigning standard file descriptors:
-                close(STDIN_FILENO);
-                if(open(c -> argv[c -> argc - 1], O_CREAT | O_RDONLY ) == -1)
+        
+                // ... | command | ...
+                // Update the last command pointer.
+                if(c -> piperead == 1 && c -> pipewrite == 1)
                 {
-                    perror( strerror(errno) );
-                    exit(-1);
+                    command *lastCommand = (command*)lc; 
                 }
-		c -> argv[c -> argc - 1] = NULL;
-                c -> argc--;
             }
-	    
-	    
-            // command > ...
-            if(c -> output_redirected)          
-            {
-                // reassigning standard file descriptors:
-                close(STDOUT_FILENO);
-		if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
-		{
-                    perror( strerror(errno) );
-                    exit(-1);
-                }
-		c -> argv[c -> argc - 1] = NULL;
-                c -> argc--;
-            }
-	    
-            // command 2> ...
-            if(c -> stderr_redirected)          
-            {
-                // reassigning standard file descriptors:
-                close(STDERR_FILENO);
-                if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
-                {
-                    perror( strerror(errno) );
-                    exit(-1);
-                }
-                c -> argv[c -> argc - 1] = NULL;
-                c -> argc--;
-            }
-	    
+    
+            /**
+             * TODO: End of pipe code.
+             */
+
             if( execvp(c -> argv[0], c -> argv) == -1){    
                 perror( strerror(errno) );
                 exit(-1);
@@ -350,15 +365,24 @@ void eval_command(command* c) {
             }
      	          
             if(c -> background == 0)
-	      waitpid(pid, &command_result, 0);
-	    
-	    //if(c -> background == 0)
-	    //waitpid(pid, NULL, 0);
+                waitpid(pid, &command_result, 0);
         }
-    }
+    } // cd
     else if( chdir(c -> argv[1]) != 0)
-      perror(strerror(errno));
-        
+        perror(strerror(errno));
+
+
+    // Restoring file descriptors:
+    // TODO: maybe this could be done more intellectually (depending on 
+    // what file descriptors were opened earlier). E.g.:
+    // if(c -> stderr_redirected)    
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    dup2(stdin_copy, STDIN_FILENO);
+    dup2(stdout_copy, STDOUT_FILENO);
+    dup2(stderr_copy, STDERR_FILENO);
 }
 
 /**
