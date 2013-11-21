@@ -297,7 +297,6 @@ void eval_command(command* c) {
     /**
      * TODO: Here should be the pipe code
      */
-    
 
     if( strcmp(c -> argv[0], "cd") != 0 )
     {
@@ -307,6 +306,7 @@ void eval_command(command* c) {
             /**
              * TODO: The pipe code should be moved up, and placed somewhere before fork.
              * Only exec() should be left here i the fork.
+             * Actually, I tried to move it, but tests failed.
              */
             
             // Write to pipe...
@@ -367,7 +367,7 @@ void eval_command(command* c) {
             if(c -> background == 0)
                 waitpid(pid, &command_result, 0);
         }
-    } // cd
+    } // cd, actually
     else if( chdir(c -> argv[1]) != 0)
         perror(strerror(errno));
 
