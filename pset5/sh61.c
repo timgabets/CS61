@@ -54,6 +54,7 @@ int check_previous;         // 0 if previous command was not logical,
                             // LOGICAL_OR (1) if previous command used || operator, and
                             // LOGICAL_AND (2) if previous command used && operator.
 
+
 /**
  * Data structure describing a command. Add your own stuff.
  */
@@ -239,6 +240,7 @@ char* parse_shell_token(char* str, int* type, char** token) {
  * [eval_command description]
  * @param c [description]
  */
+
 void eval_command(command* c) {
     pid_t pid = -1;             // process ID for child
 
@@ -252,43 +254,33 @@ void eval_command(command* c) {
         pid = fork();
         if(pid == 0)
         {
-            // CHILD
-            // Only write to pipe...
+
+	    // Write to pipe...
             // use command fd's with apropiate connections
-            if(c -> pipewrite == 1 && c -> piperead == 0)
+	    if(c -> pipewrite == 1)
             {
     	       close(c->pipefd[0]); 
     	       dup2(c->pipefd[1], STDOUT_FILENO);
     	       close(c->pipefd[1]); 
             }
     
-            // Only read from pipe...
+            // Read from pipe...
             // use last command fd's with apropiate connections
-            if(c -> piperead == 1 && c -> pipewrite == 0)
+            if(c -> piperead == 1)
             {
                 command *lastCommand = (command*)lc; 
                 close(lastCommand->pipefd[1]); 
                 dup2(lastCommand->pipefd[0], STDIN_FILENO);
                 close(lastCommand->pipefd[0]);
-            }
-    
-            // Both read and write to pipe...
-            // use command fd's to write with apropiate connections
-            // use last command fd's to read with apropiate connections
-            if(c -> piperead == 1 && c -> pipewrite == 1)
-            {
-                // Write...
-                close(c->pipefd[0]); 
-                dup2(c->pipefd[1], STDOUT_FILENO);
-                close(c->pipefd[1]); 
-                
-                // Read...
-                command *lastCommand = (command*)lc; 
-                close(lastCommand->pipefd[1]); 
-                dup2(lastCommand->pipefd[0], STDIN_FILENO);
-                close(lastCommand->pipefd[0]); 
-            }
-     
+
+		// If it is an in between pipe (read & write)...
+		// Update the last command pointer.
+		if(c -> piperead == 1 && c -> pipewrite == 1)
+		{
+		    command *lastCommand = (command*)lc; 
+		}
+	    }
+
             // command < ...
             if(c -> input_redirected)
             {
@@ -299,22 +291,25 @@ void eval_command(command* c) {
                     perror( strerror(errno) );
                     exit(-1);
                 }
+		c -> argv[c -> argc - 1] = NULL;
+                c -> argc--;
             }
-    
+	    
+	    
             // command > ...
             if(c -> output_redirected)          
             {
                 // reassigning standard file descriptors:
                 close(STDOUT_FILENO);
-                if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
-                {
+		if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY ) == -1)
+		{
                     perror( strerror(errno) );
                     exit(-1);
                 }
-                c -> argv[c -> argc - 1] = NULL;
+		c -> argv[c -> argc - 1] = NULL;
                 c -> argc--;
             }
-    
+	    
             // command 2> ...
             if(c -> stderr_redirected)          
             {
@@ -328,7 +323,7 @@ void eval_command(command* c) {
                 c -> argv[c -> argc - 1] = NULL;
                 c -> argc--;
             }
-
+	    
             if( execvp(c -> argv[0], c -> argv) == -1){    
                 perror( strerror(errno) );
                 exit(-1);
@@ -355,11 +350,14 @@ void eval_command(command* c) {
             }
      	          
             if(c -> background == 0)
-                waitpid(pid, &command_result, 0);
+	      waitpid(pid, &command_result, 0);
+	    
+	    //if(c -> background == 0)
+	    //waitpid(pid, NULL, 0);
         }
     }
     else if( chdir(c -> argv[1]) != 0)
-            perror(strerror(errno));
+      perror(strerror(errno));
         
 }
 
@@ -367,10 +365,12 @@ void eval_command(command* c) {
  * [build_execute description]
  * @param commandLine [command to build and execute]
  */
+
 void build_execute(char* commandList) {
     int type;
     char* token;
-
+    
+    
     // ... | command
     if(check_previous == LOGICAL_OR)
     {
@@ -401,7 +401,7 @@ void build_execute(char* commandList) {
             // SUCCESS && command
         }
     }
-
+    
     // build the command
     command* c = command_alloc();
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
@@ -414,7 +414,7 @@ void build_execute(char* commandList) {
             c -> piperead = 1;
             pipeused = 0;
         }
-
+	
         // All the behaviour of the future excutable is have to be set here:
         if(type == TOKEN_REDIRECTION)   // 2
         {
@@ -460,21 +460,32 @@ void build_execute(char* commandList) {
     
                     return;
                 }
-
+		
                 case '&': 
                     c -> background = 1;
                     c -> argc--;
                     c -> argv[ c -> argc ] = NULL;
-                    break;
+		    
+		    if (c -> argc)
+                        eval_command(c);
+                    return;
+		    //break;
 
                 case ';':
                     c -> background = 0;
                     c -> argc--;
                     c -> argv[ c -> argc ] = NULL;
-                    break;
+                    
+		    if (c -> argc)
+                        eval_command(c);
+		    
+		    return;
+		    //break;
+		
             }
         } // end if TOKEN_CONTROL
 
+	
         if(type == TOKEN_LOGICAL)   // 3
         {
             if( strcmp(token, "||") == 0)
@@ -483,7 +494,8 @@ void build_execute(char* commandList) {
                 check_previous = LOGICAL_OR;
                 c -> argc--;
                 c -> argv[ c -> argc ] = NULL;
-            } 
+		
+	    } 
 
             if( strcmp(token, "&&") == 0)
             {
@@ -491,9 +503,10 @@ void build_execute(char* commandList) {
                 check_previous = LOGICAL_AND;
                 c -> argc--;
                 c -> argv[ c -> argc ] = NULL;
-            } 
+            
+	    } 
         } // end TOKEN_LOGICAL
-
+	
     } //end while
 
     // execute the command
