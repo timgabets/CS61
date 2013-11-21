@@ -268,7 +268,7 @@ void eval_command(command* c) {
         }
 
         c -> argv[c -> argc - 1] = NULL;
-        //c -> argc--;
+        c -> argc--;
     }
 
     // command < ...
