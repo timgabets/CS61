@@ -256,14 +256,19 @@ void eval_command(command* c) {
     if(c -> output_redirected)          
     {
         // reassigning standard file descriptors:
-        close(STDOUT_FILENO);
-        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY, 0664 ) == -1)
+        int fd = open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY | O_TRUNC, 0664 );
+        if(fd != -1)
+        {
+            close(STDOUT_FILENO);
+            dup2(fd, STDOUT_FILENO);
+        }else
         {
             perror( strerror(errno) );
             exit(-1);
         }
+
         c -> argv[c -> argc - 1] = NULL;
-        c -> argc--;
+        //c -> argc--;
     }
 
     // command < ...
@@ -285,7 +290,7 @@ void eval_command(command* c) {
     {
         // reassigning standard file descriptors:
         close(STDERR_FILENO);
-        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY, 0664 ) == -1)
+        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY | O_TRUNC, 0664 ) == -1)
         {
             perror( strerror(errno) );
             exit(-1);
