@@ -66,11 +66,11 @@ struct command {
 	int     run;               // should the command be run or not. Useful in case of logical operations - &&, ||, etc.
 	int     background;        // command &
 	int     piperead;          // ... | command
-        int     pipewrite;         // command | ...
-        int     input_redirected;  // commmand < ...
-        int     output_redirected; // command > ...
-        int     stderr_redirected; // command 2> ...
-        int     pipefd[2];         // file descriptors for pipe
+    int     pipewrite;         // command | ...
+    int     input_redirected;  // commmand < ...
+    int     output_redirected; // command > ...
+    int     stderr_redirected; // command 2> ...
+    int     pipefd[2];         // file descriptors for pipe
 };
 
 char *lc;    // pointer to last command
@@ -87,9 +87,9 @@ static command* command_alloc(void) {
 	c -> background = 0;
 	c -> pipewrite = 0;
 	c -> piperead = 0;
-        c -> input_redirected = 0;
-        c -> output_redirected = 0;
-        c -> stderr_redirected = 0;
+    c -> input_redirected = 0;
+    c -> output_redirected = 0;
+    c -> stderr_redirected = 0;
 	return c;
 }
 
@@ -384,8 +384,7 @@ void eval_command(command* c) {
 void build_execute(char* commandList) {
     int type;
     char* token;
-    
-    
+        
     // ... | command
     if(check_previous == LOGICAL_OR)
     {
