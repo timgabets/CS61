@@ -256,12 +256,8 @@ void eval_command(command* c) {
     if(c -> output_redirected)          
     {
         // reassigning standard file descriptors:
-        int fd = open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY | O_TRUNC, 0664 );
-        if(fd != -1)
-        {
-            close(STDOUT_FILENO);
-            dup2(fd, STDOUT_FILENO);
-        }else
+        close(STDOUT_FILENO);
+        if( open(c -> argv[c -> output_redirected], O_CREAT | O_WRONLY | O_TRUNC, 0664 ) == -1)
         {
             perror( strerror(errno) );
             exit(-1);
@@ -276,7 +272,7 @@ void eval_command(command* c) {
     {
         // reassigning standard file descriptors:
         close(STDIN_FILENO);
-        if(open(c -> argv[c -> argc - 1], O_CREAT | O_RDONLY ) == -1)
+        if(open(c -> argv[c -> input_redirected], O_CREAT | O_RDONLY ) == -1)
         {
             perror( strerror(errno) );
             exit(-1);
@@ -290,7 +286,7 @@ void eval_command(command* c) {
     {
         // reassigning standard file descriptors:
         close(STDERR_FILENO);
-        if(open(c -> argv[c -> argc - 1], O_CREAT | O_WRONLY | O_TRUNC, 0664 ) == -1)
+        if(open(c -> argv[c -> stderr_redirected], O_CREAT | O_WRONLY | O_TRUNC, 0664 ) == -1)
         {
             perror( strerror(errno) );
             exit(-1);
@@ -374,7 +370,10 @@ void eval_command(command* c) {
         }
     } // cd, actually
     else if( chdir(c -> argv[1]) != 0)
-        perror(strerror(errno));
+    {
+        fprintf(stderr, "cd %s: %s\n", c -> argv[1], strerror(errno));
+        command_result = -1;
+    }
 
 
     // Restoring file descriptors:
@@ -450,20 +449,20 @@ void build_execute(char* commandList) {
             switch(*token)
             {
                 case '>':
-                    c -> output_redirected = 1;
                     c -> argc--;
+                    c -> output_redirected = c -> argc;
                     break;
     
                 case '<':
-                    c -> input_redirected = 1;
                     c -> argc--;
+                    c -> input_redirected = c -> argc;
                     break;  
             }
 
             if(strcmp(token, "2>") == 0 )
             {
-                c -> stderr_redirected = 1;
                 c -> argc--;
+                c -> stderr_redirected = c -> argc;
             }
         } // end if TOKEN_REDIRECTION
 
@@ -685,4 +684,5 @@ int main(int argc, char* argv[]) {
 
 	return 0;
 }
+
 
