@@ -10,7 +10,10 @@ $rev = 'rev';
 
 @tests = (
 # Execute
-    [ 'Test 1 (Simple commands)',
+    [ # 0. Test title
+      # 1. Test command
+      # 2. Expected test output (with newlines changed to spaces)
+      'Test 1 (Simple commands)',
       'echo Hooray',
       'Hooray' ],
 
@@ -21,12 +24,16 @@ $rev = 'rev';
     [ 'Test 3',
       'cat test.txt',
       'Triple Hooray',
+
+      # 3. Setup command. This sets up the test environment, e.g. by
+      #    creating input files. It's run by the normal shell, not your shell.
       'echo Triple Hooray > test.txt' ],
 
 
     [ 'Test 4 (Multi-line scripts)',
       '../sh61 -q < temp.out',
       'Line 1 Line 2 Line 3',
+
       'echo echo Line 1 > temp.out ; echo echo Line 2 | cat temp.out - > temp2.out ; mv -f temp2.out temp.out ; echo echo Line 3 | cat temp.out - > temp2.out ; mv -f temp2.out temp.out' ],
 
 
@@ -38,14 +45,18 @@ $rev = 'rev';
     [ 'Test 6 (Background commands)',
       'cp a b &',
       'Copied',
+
       'echo Copied > a; echo Original > b',
+      # 4. Cleanup command. This is run, by the normal shell, after your
+      #    shell has finished.
       'sleep 0.1 && cat b' ],
 
     [ 'Test 7',
-      'sh -c "sleep 0.2; -r test6 && rm a" &',
+      'sh -c "sleep 0.1; test -r test6 && rm a" &',
       'Still here',
+
       'echo Still here > a; echo > test6',
-      'sleep 0.3 && cat a' ],
+      'rm test6 && sleep 0.2 && cat a' ],
 
     [ 'Test 8',
       'sleep 2 & ps T | grep sleep | grep -v grep | head -n 1 | wc -l',
@@ -54,11 +65,13 @@ $rev = 'rev';
     [ 'Test 9',
       '../sh61 -q subcommand.txt & sleep 1 ; ps T | grep sleep | grep -v grep | head -n 1 | wc -l',
       'Hello 1',
+
       'echo "echo Hello; sleep 2" > subcommand.txt'],
 
     [ 'Test 10',
       '../sh61 -q subcommand.txt; ps | grep sleep | grep -v grep | head -n 1 | wc -l',
       'Hello Bye 1',
+
       'echo "echo Hello; sleep 2& echo Bye" > subcommand.txt'],
 
 
@@ -144,27 +157,34 @@ $rev = 'rev';
     [ 'Test 30 (Redirection)',
       'echo Start ; echo File > temp.out',
       'Start File',
+
       '',
       'cat temp.out'],
 
     [ 'Test 31',
       'cat < temp.out ; echo Done',
       'File Done',
+
       'echo File > temp.out'],
 
     [ 'Test 32',
       'rm file_that_is_not_there 2> temp.out ; wc -l temp.out ; rm -f temp.out',
       '1 temp.out',
+
       'echo File > temp.out' ],
 
     [ 'Test 33',
       'sort < temp.out | ../sh61 -q subcommand.txt',
       'Bye Hello First Good',
+
       'echo "head -n 2 ; echo First && echo Good" > subcommand.txt; (echo Hello; echo Bye) > temp.out'],
 
     [ 'Test 34',
       'sort < temp.out > temp2.out ; tail -2 temp2.out ; rm -f temp.out temp2.out',
       'Bye Hello',
+
+      # Remember -- this is a normal shell command! For your shell parentheses
+      # are extra credit.
       '(echo Hello; echo Bye) > temp.out'],
 
 
