@@ -47,7 +47,7 @@
 //    Returns NULL and sets `*token = NULL` at the end of string.
 
 char* parse_shell_token(char* str, int* type, char** token);
-int pipeused = 0;		    // 1 if previous command used pipe for writing. 
+int pipeused = 0;	    // 1 if previous command used pipe for writing. 
                             // Means that current command need to use pipe for reading.
 int command_result;         // Result of the prevous command. Useful in case of logical operations
 int check_previous;         // 0 if previous command was not logical,
@@ -66,11 +66,11 @@ struct command {
 	int     run;               // should the command be run or not. Useful in case of logical operations - &&, ||, etc.
 	int     background;        // command &
 	int     piperead;          // ... | command
-    int     pipewrite;         // command | ...
-    int     input_redirected;  // commmand < ...
-    int     output_redirected; // command > ...
-    int     stderr_redirected; // command 2> ...
-    int     pipefd[2];         // file descriptors for pipe
+        int     pipewrite;         // command | ...
+        int     input_redirected;  // commmand < ...
+        int     output_redirected; // command > ...
+        int     stderr_redirected; // command 2> ...
+        int     pipefd[2];         // file descriptors for pipe
 };
 
 char *lc;    // pointer to last command
@@ -87,9 +87,9 @@ static command* command_alloc(void) {
 	c -> background = 0;
 	c -> pipewrite = 0;
 	c -> piperead = 0;
-    c -> input_redirected = 0;
-    c -> output_redirected = 0;
-    c -> stderr_redirected = 0;
+        c -> input_redirected = 0;
+        c -> output_redirected = 0;
+        c -> stderr_redirected = 0;
 	return c;
 }
 
@@ -295,20 +295,12 @@ void eval_command(command* c) {
         c -> argc--;
     }
 
-    /**
-     * TODO: Here should be the pipe code
-     */
 
-    if( strcmp(c -> argv[0], "cd") != 0 )
+    if( strcmp(c -> argv[0], "cd") != 0)
     {
         pid = fork();
         if(pid == 0)
         {       
-            /**
-             * TODO: The pipe code should be moved up, and placed somewhere before fork.
-             * Only exec() should be left here i the fork.
-             * Actually, I tried to move it, but tests failed.
-             */
             
             // Write to pipe...
             // use command fd's with apropiate connections
@@ -336,10 +328,7 @@ void eval_command(command* c) {
                 }
             }
     
-            /**
-             * TODO: End of pipe code.
-             */
-
+	    // Execute command
             if( execvp(c -> argv[0], c -> argv) == -1){    
                 perror( strerror(errno) );
                 exit(-1);
@@ -360,26 +349,24 @@ void eval_command(command* c) {
                     // Close last commands fds
                     close(lastCommand->pipefd[0]);
                     close(lastCommand->pipefd[1]);
-                    // free last commands
+                    // free last command
                     command_free(lastCommand);
                 }
             }
      	          
+	    //If it is not a background process waitpid
             if(c -> background == 0)
                 waitpid(pid, &command_result, 0);
         }
-    } // cd, actually
-    else if( chdir(c -> argv[1]) != 0)
+    } 
+    // cd, actually (first it checks that we are not going into a pipe)
+    else if(c -> pipewrite != 1 && chdir(c -> argv[1]) != 0)
     {
         fprintf(stderr, "cd %s: %s\n", c -> argv[1], strerror(errno));
         command_result = -1;
     }
 
-
     // Restoring file descriptors:
-    // TODO: maybe this could be done more intellectually (depending on 
-    // what file descriptors were opened earlier). E.g.:
-    // if(c -> stderr_redirected)    
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
@@ -402,12 +389,7 @@ void build_execute(char* commandList) {
     // ... | command
     if(check_previous == LOGICAL_OR)
     {
-        // previous command was logical, and stored its return status in command_result
-        if(command_result != 0) 
-        {
-            // TODO:
-            // FAIL || command
-        }else
+        if(command_result == 0) 
         {
             // SUCCESS || command
             // the rest of the command is not interesting anymore
@@ -418,15 +400,11 @@ void build_execute(char* commandList) {
     // ... && command
     if(check_previous == LOGICAL_AND)
     {
-        // previous command was logical, and stored its return status in command_result
+
         if(command_result != 0) 
         {
             // FAIL && command
             commandList = NULL;
-        }else
-        {
-            // TODO:
-            // SUCCESS && command
         }
     }
     
@@ -443,7 +421,7 @@ void build_execute(char* commandList) {
             pipeused = 0;
         }
 	
-        // All the behaviour of the future excutable is have to be set here:
+        // All the behaviour of the future excutable is set here:
         if(type == TOKEN_REDIRECTION)   // 2
         {
             switch(*token)
@@ -476,14 +454,13 @@ void build_execute(char* commandList) {
                     c -> argc--;
                     c -> argv[ c -> argc ] = NULL;
                     pipeused = 1;
-                    // If the command will just write to a pipe
+            
+		    // If the command will just write to a pipe
                     // (not read and write) make current command last command pointer
                     if (c->piperead != 1)
                         lc = (char*)c;
                     
-                    // BUGFIX: some arguments like ps T passed some weird extra
-                    // parameters on pipes. Execute command here to avoid them. 
-                    if (c -> argc)
+		    if (c -> argc)
                         eval_command(c);
     
                     return;
@@ -497,8 +474,7 @@ void build_execute(char* commandList) {
 		    if (c -> argc)
                         eval_command(c);
                     return;
-		    //break;
-
+		    
                 case ';':
                     c -> background = 0;
                     c -> argc--;
@@ -516,8 +492,8 @@ void build_execute(char* commandList) {
         {
             if( strcmp(token, "||") == 0)
             {
-                // next command have to check the return value of current command
-                check_previous = LOGICAL_OR;
+	        
+	        check_previous = LOGICAL_OR;
                 c -> argc--;
                 c -> argv[ c -> argc ] = NULL;
 		
@@ -525,7 +501,7 @@ void build_execute(char* commandList) {
 
             if( strcmp(token, "&&") == 0)
             {
-                // next command have to check the return value of current command
+                
                 check_previous = LOGICAL_AND;
                 c -> argc--;
                 c -> argv[ c -> argc ] = NULL;
@@ -566,7 +542,7 @@ void eval_command_line(const char* s) {
         }
 
         // If we are not inside of a parenthesis and 
-        //it is separated by ; or & or | , but not || or &&
+        // it is separated by ; or & or | , but not || or &&
 
         if ((insideParenthesis != 1) && 
                (s[i] == ';' 
@@ -684,5 +660,4 @@ int main(int argc, char* argv[]) {
 
 	return 0;
 }
-
 
