@@ -7,7 +7,7 @@
  * them. The simple commands, background commands, conditional commands (&& and ||),
  * redirections and pipes should be implemented, as well as command interruption. 
  * The shell implements a subset of the bash shell’s syntax, and is generally 
- * compatible with bash for the features they share.
+v * compatible with bash for the features they share.
  * 
  * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
@@ -36,6 +36,10 @@
 
 #define LOGICAL_OR          1  // previous command used || operator
 #define LOGICAL_AND         2  // previous command used && operator
+
+
+int needprompt = 1;
+int bufpos = 0;
 
 // parse_shell_token(str, type, token)
 //    Parse the next token from the shell command `str`. Stores the type of
@@ -600,16 +604,32 @@ int set_foreground(pid_t p) {
 	return tcsetpgrp(ttyfd, p);
 }
 
+// Signal handler to handle ctrl+c
+void signal_handler() 
+{
+    // Print a new prompt
+    // TODO: make new prompt by needpromt = 1
+    // TODO: kill current foreground processes and all related processes
+    printf("\nsh61[%d]$ ", getpid());
+    fflush(stdout);
+    needprompt = 0;
+
+}
+
 
 int main(int argc, char* argv[]) {
 	FILE* command_file = stdin;
 	int quiet = 0;
 	int r = 0;
-
+	
+	// Add signal handler to handle ctrl+c
+	signal(SIGINT,signal_handler); 
+	
 	// Check for '-q' option: be quiet (print no prompts)
 	if (argc > 1 && strcmp(argv[1], "-q") == 0) {
 		quiet = 1;
 		--argc, ++argv;
+
 	}
 
 	// Check for filename option: read commands from file
@@ -622,8 +642,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	char buf[BUFSIZ];
-	int bufpos = 0;
-	int needprompt = 1;
+	//int bufpos = 0;
+	bufpos = 0;
+	//int needprompt = 1;
+	needprompt = 1;
 
 	while (!feof(command_file)) {
 		// Print the prompt at the beginning of the line
@@ -632,16 +654,17 @@ int main(int argc, char* argv[]) {
 			fflush(stdout);
 			needprompt = 0;
 		}
+		int myvariable;
 
 		// Read a string, checking for error or EOF
 		if (fgets(&buf[bufpos], BUFSIZ - bufpos, command_file) == NULL) {
-			if (ferror(command_file) && errno == EINTR) {
+		        if (ferror(command_file) && errno == EINTR) {
 				// ignore EINTR errors
-				clearerr(command_file);
+			        clearerr(command_file);
 				buf[bufpos] = 0;
 			} else {
-				if (ferror(command_file))
-					perror("sh61");
+			        if (ferror(command_file))
+				  perror("sh61");
 				break;
 			}
 		}
