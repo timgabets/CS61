@@ -62,7 +62,8 @@ int check_previous;         // 0 if previous command was not logical,
                             // LOGICAL_AND (2) if previous command used && operator.
 int isParent = 1;
 
-int interrupted = 0;
+int interrupted = 0;    // 1 if user did ctrl+c 0 if runs normal (this kills the foreground group process in the main loop)
+int endCommands;    // 1 if user did ctrl+c 0 if runs normal (it avoids eval_command_lin to pass the rest of the commands in case of crt+c)
 
 /**
  * Data structure describing a command. Add your own stuff.
@@ -79,7 +80,7 @@ struct command {
     int     input_redirected;  // commmand < ...
     int     output_redirected; // command > ...
     int     stderr_redirected; // command 2> ...
-  int isParent;
+    int     isParent;
     int     pipefd[2];         // file descriptors for pipe
 };
 
@@ -472,7 +473,7 @@ void build_execute(char* commandList) {
             // TODO: this works for tests but not for ./sh61
             commandList = NULL;
             check_previous = 0;
-        } 
+	} 
     }
 
     // ... && command
@@ -493,6 +494,7 @@ void build_execute(char* commandList) {
     // START_NEW
     c->isParent = isParent;
     // END_NEW
+
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
         command_append_arg(c, token);
@@ -626,6 +628,7 @@ void build_execute(char* commandList) {
 void eval_command_line(const char* s) {
 
     // Iterate through s string
+    //endCommands = 0;  
     int start = 0;
     int length = strlen(s);
     int insideParenthesis = 0;
@@ -641,8 +644,10 @@ void eval_command_line(const char* s) {
 
         // If we are not inside of a parenthesis and 
         // it is separated by ; or & or | , but not || or &&
-
-        if ((insideParenthesis != 1) && 
+	// START_NEW
+	// checks also if user has not entered crtl+c with endCommands
+	// END_NEW
+	if ((insideParenthesis != 1) && (endCommands == 0) &&
                (s[i] == ';' 
                    || ( s[i] == '&' && s[i + 1] != '&') 
                    || ( s[i] == '|' && s[i + 1] != '|') 
@@ -671,10 +676,17 @@ void eval_command_line(const char* s) {
     }
 
     // Create and execute the last comand list
-    char* commandList = (char*) malloc(length - start + 2);
-    strncpy(commandList, s + start, length - start + 1);
-    build_execute(commandList);
-    free(commandList);
+    // START_NEW
+    // checks also if user has not entered crtl+c with endCommands
+    // END_NEW
+    if (endCommands == 0) 
+    {
+        char* commandList = (char*) malloc(length - start + 2);
+	strncpy(commandList, s + start, length - start + 1);
+	build_execute(commandList);
+	free(commandList);
+    }
+    
 }
 	
 
@@ -712,10 +724,19 @@ int set_foreground(pid_t p) {
 // Signal handler to handle ctrl+c
 void signal_handler() 
 {
-    printf("\nsh61[%d]$ ", getpid());
-    fflush(stdout);
-    needprompt = 0;
+    // START_NEW
+    check_previous = 0;
+    endCommands = 1;
+    
+    // Prints a prompt if crtl+c was pressed while no instruction was running
+    if (bufpos == 0) { 
+        printf("\nsh61[%d]$ ", getpid());
+	fflush(stdout);
+	needprompt = 0;
+    }
+    // END_NEW
     interrupted = 1;
+    
 }
 
 
@@ -775,6 +796,10 @@ int main(int argc, char* argv[]) {
 		// If a complete command line has been provided, run it
 		bufpos = strlen(buf);
 		if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
+		        // START_NEW
+		        endCommands = 0;
+			// END_NEW
+
 			eval_command_line(buf);
 			bufpos = 0;
 			needprompt = 1;
