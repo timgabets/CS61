@@ -113,8 +113,9 @@ static command* command_alloc(void) {
 static void command_free(command* c) {
 	for (int i = 0; i != c->argc; ++i)
 		free(c->argv[i]);
-	free(c->argv);
-	free(c);
+    
+    free(c->argv);
+    free(c);
 }
 
 
@@ -311,16 +312,16 @@ void eval_command(command* c) {
     // Only wait for the last part of a pipe...
     if(c -> piperead == 1 && c -> pipewrite == 0)
     {
-      // Set the last part of the pipe to foregreound
-      c->background = 0;
+        // Set the last part of the pipe to foregreound
+        c->background = 0;
     } else if (c -> piperead == 1 && c -> pipewrite == 1)
     {
-      // set a middle part of the pipe to background
-      c->background = 1;
+        // set a middle part of the pipe to background
+        c->background = 1;
     } else if (c -> piperead == 0 && c -> pipewrite == 1)
     {
-      // set the first part of the pipe to background
-      c->background = 1;
+        // set the first part of the pipe to background
+        c->background = 1;
     }
 
 
@@ -338,7 +339,7 @@ void eval_command(command* c) {
         pid = fork();
         if(pid == 0)
         {       
-	    // Write to pipe...
+            // Write to pipe...
             // use command fd's with apropiate connections
             if(c -> pipewrite == 1)
             {
@@ -364,7 +365,7 @@ void eval_command(command* c) {
                 }
             }
     
-	    // Execute command
+            // Execute command
             if( execvp(c -> argv[0], c -> argv) == -1){    
                 perror( strerror(errno) );
                 exit(-1);
@@ -395,19 +396,19 @@ void eval_command(command* c) {
 	    if (c->isParent == 1  && c->pipewrite != 0 && c -> background == 0) 
 	    {
 	        currentPid = parentPid;
-		signal(SIGTTOU, SIG_IGN);
-		set_foreground(parentPid);
+            signal(SIGTTOU, SIG_IGN);
+            set_foreground(parentPid);
 	    }
 	    // If it parent command (start of a command group)...
 	    // and is the start of a pipe... set_foreground to parent pid
 	    if (c->isParent == 1  && c->pipewrite == 0 && c -> background == 1) 
 	    {
 	        currentPid = parentPid;
-		signal(SIGTTOU, SIG_IGN);
-		set_foreground(parentPid);
+            signal(SIGTTOU, SIG_IGN);
+            set_foreground(parentPid);
 	    }
      	          
-            if(c -> background == 0)
+        if(c -> background == 0)
 	    {
 	        // Wait for foreground process 
 	        waitpid(pid, &command_result, 0);
@@ -422,7 +423,7 @@ void eval_command(command* c) {
 	    if (c->isParent == 1 && c->pipewrite != 0 && c -> background == 0) 
 	    {
 	        signal(SIGTTOU, SIG_IGN);
-		set_foreground(getpid());
+            set_foreground(getpid());
 	    }
 	    
 	    // If it parent command (start of a command group)...
@@ -430,12 +431,12 @@ void eval_command(command* c) {
 	    if(c -> piperead == 1 && c -> pipewrite == 0)
 	    {
 	        signal(SIGTTOU, SIG_IGN);
-		set_foreground(getpid());
+            set_foreground(getpid());
 	    }
 	    
 	}
     } 
-    // cd, actually (first it checks that we are not going into a pipe)
+    // cd (first it checks that we are not going into a pipe)
     else if(c -> pipewrite != 1 && chdir(c -> argv[1]) != 0)
     {
         fprintf(stderr, "cd %s: %s\n", c -> argv[1], strerror(errno));
@@ -468,9 +469,9 @@ void build_execute(char* commandList) {
         {
             // SUCCESS || command
             // the rest of the command is not interesting anymore
-             commandList = NULL;
-	     check_previous = 0;
-	} 
+            commandList = NULL;
+            check_previous = 0;
+        } 
     }
 
     // ... && command
@@ -479,7 +480,7 @@ void build_execute(char* commandList) {
         if(command_result != 0) 
         {
             // FAIL && command
-	    commandList = NULL;
+            commandList = NULL;
             check_previous = 0;
         }
     }
@@ -492,8 +493,8 @@ void build_execute(char* commandList) {
     {
         command_append_arg(c, token);
 
-	// End of command group
-	if(type == TOKEN_CONTROL)   // 0
+        // End of command group
+        if(type == TOKEN_CONTROL)   // 0
         {
             switch(*token)
             {
@@ -549,19 +550,19 @@ void build_execute(char* commandList) {
             }
         } // end if TOKEN_REDIRECTION
 
-	if(type == TOKEN_LOGICAL)   // 3
+        if(type == TOKEN_LOGICAL)   // 3
         {
             if( strcmp(token, "||") == 0)
             {
 	        
-	        check_previous = LOGICAL_OR;
+                check_previous = LOGICAL_OR;
                 c -> argc--;
                 c -> argv[ c -> argc ] = NULL;
-		if (c -> argc)
-		  eval_command(c);
-		      
-		return;
-	    } 
+		
+                if (c -> argc)
+                    eval_command(c);
+                return;
+            } 
 
             if( strcmp(token, "&&") == 0)
             {
@@ -570,11 +571,11 @@ void build_execute(char* commandList) {
                 c -> argc--;
                 c -> argv[ c -> argc ] = NULL;
 		
-		if (c -> argc)
-                        eval_command(c);
-		      
-                    return;
-	    } 
+                if (c -> argc)
+                    eval_command(c);
+
+                return;
+            } 
         } // end TOKEN_LOGICAL
 
 	// Handle pipes
@@ -594,7 +595,7 @@ void build_execute(char* commandList) {
                     if (c->piperead != 1)
                         lc = (char*)c;
                     
-		    if (c -> argc)
+                    if (c -> argc)
                         eval_command(c);
     
                     return;
@@ -637,8 +638,8 @@ void eval_command_line(const char* s) {
 
         // If we are not inside of a parenthesis and 
         // it is separated by ; or & or | , but not || or &&
-	// checks also if user has not entered crtl+c with endCommands
-	if ((insideParenthesis != 1) && (endCommands == 0) &&
+        // checks also if user has not entered crtl+c with endCommands
+        if ((insideParenthesis != 1) && (endCommands == 0) &&
                (s[i] == ';' 
                    || ( s[i] == '&' && s[i + 1] != '&') 
                    || ( s[i] == '|' && s[i + 1] != '|') 
@@ -671,9 +672,9 @@ void eval_command_line(const char* s) {
     if (endCommands == 0) 
     {
         char* commandList = (char*) malloc(length - start + 2);
-	strncpy(commandList, s + start, length - start + 1);
-	build_execute(commandList);
-	free(commandList);
+        strncpy(commandList, s + start, length - start + 1);
+        build_execute(commandList);
+        free(commandList);
     }
     
 }
@@ -720,8 +721,8 @@ void signal_handler()
     // Prints a prompt if crtl+c was pressed while no instruction was running
     if (bufpos == 0) { 
         printf("\nsh61[%d]$ ", getpid());
-	fflush(stdout);
-	needprompt = 0;
+    	fflush(stdout);
+    	needprompt = 0;
     }
 
     // kill all processes in group in in the main loop
@@ -759,9 +760,6 @@ int main(int argc, char* argv[]) {
 	needprompt = 1;
 	
 	while (!feof(command_file)) {
-
-	        
-
 		// Print the prompt at the beginning of the line
 		if (needprompt && !quiet) {
 			printf("sh61[%d]$ ", getpid());
@@ -777,7 +775,7 @@ int main(int argc, char* argv[]) {
 			        clearerr(command_file);
 				buf[bufpos] = 0;
 			} else {
-			        if (ferror(command_file))
+                if (ferror(command_file))
 				  perror("sh61");
 				break;
 			}
@@ -787,8 +785,8 @@ int main(int argc, char* argv[]) {
 		bufpos = strlen(buf);
 		if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
 		        
-		        // reset endCommand at the start of a new list
-		        endCommands = 0;
+            // reset endCommand at the start of a new list
+		    endCommands = 0;
 			
 			eval_command_line(buf);
 			bufpos = 0;
