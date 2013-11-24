@@ -331,14 +331,15 @@ void eval_command(command* c) {
         // Start of command group...
         // change group id
         if (c->isParent == 1) 
-	{
-	    setpgid(0, 0);
-	}
-	int parentPid = getpid();
-	// END_NEW
+        {
+            setpgid(0, 0);
+        }
 
-	pid = fork();
-	if(pid == 0)
+    	int parentPid = getpid();
+	   // END_NEW
+
+        pid = fork();
+        if(pid == 0)
         {       
 	    // Write to pipe...
             // use command fd's with apropiate connections
@@ -469,20 +470,21 @@ void build_execute(char* commandList) {
             // SUCCESS || command
             // the rest of the command is not interesting anymore
             // TODO: this works for tests but not for ./sh61
-	    commandList = NULL;
-	} 
+            commandList = NULL;
+            check_previous = 0;
+        } 
     }
 
     // ... && command
     if(check_previous == LOGICAL_AND)
     {
-
         if(command_result != 0) 
         {
             // FAIL && command
             // TODO: this works for tests but not for ./sh61  
-	    commandList = NULL;
-	}
+            commandList = NULL;
+            check_previous = 0;
+        }
     }
     
     // build the command
