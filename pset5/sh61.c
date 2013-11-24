@@ -308,7 +308,6 @@ void eval_command(command* c) {
         c -> argc--;
     }
 
-    // START_NEW
     // Only wait for the last part of a pipe...
     if(c -> piperead == 1 && c -> pipewrite == 0)
     {
@@ -323,12 +322,10 @@ void eval_command(command* c) {
       // set the first part of the pipe to background
       c->background = 1;
     }
-    // END_NEW
 
 
     if( strcmp(c -> argv[0], "cd") != 0)
     {
-        // START_NEW
         // Start of command group...
         // change group id
         if (c->isParent == 1) 
@@ -337,7 +334,6 @@ void eval_command(command* c) {
         }
 
     	int parentPid = getpid();
-	   // END_NEW
 
         pid = fork();
         if(pid == 0)
@@ -393,8 +389,7 @@ void eval_command(command* c) {
                     command_free(lastCommand);
                 }
             }
-
-	    // START_NEW
+	    
 	    // If it parent command (start of a command group)...
 	    //but it is not a pipe... set_foreground to parent pid
 	    if (c->isParent == 1  && c->pipewrite != 0 && c -> background == 0) 
@@ -412,12 +407,13 @@ void eval_command(command* c) {
 		set_foreground(parentPid);
 	    }
      	          
-	    //If it is not a background process waitpid
             if(c -> background == 0)
 	    {
+	        // Wait for foreground process 
 	        waitpid(pid, &command_result, 0);
 	    } else 
 	    {
+	        // Dont hang for background process
 	        waitpid(pid, &command_result, WNOHANG);
 	    }
 	
@@ -436,7 +432,6 @@ void eval_command(command* c) {
 	        signal(SIGTTOU, SIG_IGN);
 		set_foreground(getpid());
 	    }
-	    // END_NEW
 	    
 	}
     } 
@@ -473,9 +468,8 @@ void build_execute(char* commandList) {
         {
             // SUCCESS || command
             // the rest of the command is not interesting anymore
-            // TODO: this works for tests but not for ./sh61
-            commandList = NULL;
-            check_previous = 0;
+             commandList = NULL;
+	     check_previous = 0;
 	} 
     }
 
@@ -485,18 +479,14 @@ void build_execute(char* commandList) {
         if(command_result != 0) 
         {
             // FAIL && command
-            // TODO: this works for tests but not for ./sh61  
-            commandList = NULL;
+	    commandList = NULL;
             check_previous = 0;
         }
     }
     
     // build the command
     command* c = command_alloc();
-
-    // START_NEW
     c->isParent = isParent;
-    // END_NEW
 
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
@@ -647,9 +637,7 @@ void eval_command_line(const char* s) {
 
         // If we are not inside of a parenthesis and 
         // it is separated by ; or & or | , but not || or &&
-	// START_NEW
 	// checks also if user has not entered crtl+c with endCommands
-	// END_NEW
 	if ((insideParenthesis != 1) && (endCommands == 0) &&
                (s[i] == ';' 
                    || ( s[i] == '&' && s[i + 1] != '&') 
@@ -665,7 +653,8 @@ void eval_command_line(const char* s) {
             free(commandList);
             start = i + 1;
 	    
-	    // START_NEW
+	    // If the line ends with a ; or a &...
+	    // prepare the next command to be the parent of the command group
 	    if (s[i] == ';' || ( s[i] == '&' && s[i - 1] != '&' && s[i + 1] != '&')) 
 	    {
 	        isParent = 1;
@@ -674,14 +663,11 @@ void eval_command_line(const char* s) {
 	    {
 	        isParent = 0;
 	    }
-	    // END_NEW
         }
     }
 
     // Create and execute the last comand list
-    // START_NEW
     // checks also if user has not entered crtl+c with endCommands
-    // END_NEW
     if (endCommands == 0) 
     {
         char* commandList = (char*) malloc(length - start + 2);
@@ -727,7 +713,7 @@ int set_foreground(pid_t p) {
 // Signal handler to handle ctrl+c
 void signal_handler() 
 {
-    // START_NEW
+    // Stop all pending commands
     check_previous = 0;
     endCommands = 1;
     
@@ -737,7 +723,8 @@ void signal_handler()
 	fflush(stdout);
 	needprompt = 0;
     }
-    // END_NEW
+
+    // kill all processes in group in in the main loop
     interrupted = 1;
     
 }
@@ -748,7 +735,7 @@ int main(int argc, char* argv[]) {
 	int quiet = 0;
 	int r = 0;
 	
-	// Add signal handler to handle ctrl+c
+	// Signal handler for ctrl+c
 	signal(SIGINT,signal_handler); 
 	
 	// Check for '-q' option: be quiet (print no prompts)
@@ -799,16 +786,16 @@ int main(int argc, char* argv[]) {
 		// If a complete command line has been provided, run it
 		bufpos = strlen(buf);
 		if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
-		        // START_NEW
+		        
+		        // reset endCommand at the start of a new list
 		        endCommands = 0;
-			// END_NEW
-
+			
 			eval_command_line(buf);
 			bufpos = 0;
 			needprompt = 1;
 		}
 
-		// START_NEW
+		// Kill all processes in the group of the current foreground command
 		if (interrupted == 1) {
 		    
 		    if (currentPid > 0) 
@@ -819,9 +806,8 @@ int main(int argc, char* argv[]) {
 		    interrupted = 0;
 		}
 		
+		// Reap all zombie processes
 		waitpid(-1, 0, WNOHANG);
-		// END_NEW
-		
 	}
 
 	return 0;
