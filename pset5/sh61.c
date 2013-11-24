@@ -381,8 +381,16 @@ void eval_command(command* c) {
      	          
 	    //If it is not a background process waitpid
             if(c -> background == 0)
-                waitpid(pid, &command_result, 0);
-        }
+	    {
+	        if (c->isParent == 1) 
+		{
+		
+		  signal(SIGTTOU, SIG_IGN);
+		  set_foreground(pid);
+		}
+		waitpid(pid, &command_result, 0);
+	    }
+	}
     } 
     // cd, actually (first it checks that we are not going into a pipe)
     else if(c -> pipewrite != 1 && chdir(c -> argv[1]) != 0)
