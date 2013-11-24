@@ -57,7 +57,7 @@ int command_result;         // Result of the prevous command. Useful in case of 
 int check_previous;         // 0 if previous command was not logical,
                             // LOGICAL_OR (1) if previous command used || operator, and
                             // LOGICAL_AND (2) if previous command used && operator.
-
+int isParent = 1;
 
 /**
  * Data structure describing a command. Add your own stuff.
@@ -74,6 +74,7 @@ struct command {
     int     input_redirected;  // commmand < ...
     int     output_redirected; // command > ...
     int     stderr_redirected; // command 2> ...
+  int isParent;
     int     pipefd[2];         // file descriptors for pipe
 };
 
@@ -300,8 +301,28 @@ void eval_command(command* c) {
     }
 
 
+    // Wait just for the last part of a pipe
+    if(c -> piperead == 1 && c -> pipewrite == 0)
+    {
+      c->background = 0;
+    } else if (c -> piperead == 1 && c -> pipewrite == 1)
+    {
+      c->background = 1;
+    } else if (c -> piperead == 0 && c -> pipewrite == 1)
+    {
+      c->background = 1;
+    }
+
+
     if( strcmp(c -> argv[0], "cd") != 0)
     {
+        // Start of command group...
+        // change group id
+        if (c->isParent == 1) 
+	{
+	    setpgid(0, 0);
+	}
+
         pid = fork();
         if(pid == 0)
         {       
@@ -411,11 +432,40 @@ void build_execute(char* commandList) {
         }
     }
     
+    //printf("parent %i comandList: %s\n", isParent, commandList);
     // build the command
     command* c = command_alloc();
+    c->isParent = isParent;
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
         command_append_arg(c, token);
+
+	// End of command group
+	if(type == TOKEN_CONTROL)   // 0
+        {
+            switch(*token)
+            {
+                case '&': 
+                    c -> background = 1;
+                    c -> argc--;
+                    c -> argv[ c -> argc ] = NULL;
+		    
+		    if (c -> argc)
+                        eval_command(c);
+                    return;
+		    
+                case ';':
+                    c -> background = 0;
+                    c -> argc--;
+                    c -> argv[ c -> argc ] = NULL;
+                    
+                    if (c -> argc)
+                        eval_command(c);
+		      
+                    return;
+            }
+        } // end if TOKEN_CONTROL
+
 
         // ... | command		
         if(pipeused)
@@ -447,6 +497,35 @@ void build_execute(char* commandList) {
             }
         } // end if TOKEN_REDIRECTION
 
+	if(type == TOKEN_LOGICAL)   // 3
+        {
+            if( strcmp(token, "||") == 0)
+            {
+	        
+	        check_previous = LOGICAL_OR;
+                c -> argc--;
+                c -> argv[ c -> argc ] = NULL;
+		if (c -> argc)
+		  eval_command(c);
+		      
+		return;
+	    } 
+
+            if( strcmp(token, "&&") == 0)
+            {
+                
+                check_previous = LOGICAL_AND;
+                c -> argc--;
+                c -> argv[ c -> argc ] = NULL;
+		
+		if (c -> argc)
+                        eval_command(c);
+		      
+                    return;
+	    } 
+        } // end TOKEN_LOGICAL
+
+	// Handle pipes
         if(type == TOKEN_CONTROL)   // 0
         {
             switch(*token)
@@ -469,49 +548,8 @@ void build_execute(char* commandList) {
                     return;
                 }
 		
-                case '&': 
-                    c -> background = 1;
-                    c -> argc--;
-                    c -> argv[ c -> argc ] = NULL;
-		    
-		    if (c -> argc)
-                        eval_command(c);
-                    return;
-		    
-                case ';':
-                    c -> background = 0;
-                    c -> argc--;
-                    c -> argv[ c -> argc ] = NULL;
-                    
-                    if (c -> argc)
-                        eval_command(c);
-		      
-                    return;
             }
         } // end if TOKEN_CONTROL
-
-	
-        if(type == TOKEN_LOGICAL)   // 3
-        {
-            if( strcmp(token, "||") == 0)
-            {
-	        
-	        check_previous = LOGICAL_OR;
-                c -> argc--;
-                c -> argv[ c -> argc ] = NULL;
-		
-	    } 
-
-            if( strcmp(token, "&&") == 0)
-            {
-                
-                check_previous = LOGICAL_AND;
-                c -> argc--;
-                c -> argv[ c -> argc ] = NULL;
-            
-	    } 
-        } // end TOKEN_LOGICAL
-	
     } //end while
 
     // execute the command
@@ -558,9 +596,18 @@ void eval_command_line(const char* s) {
             strncpy(commandList, s + start, i - start + 1);
         		
             // build and execute command list
-            build_execute(commandList);
+	    build_execute(commandList);
             free(commandList);
             start = i + 1;
+	    
+	    if (s[i] == ';' || ( s[i] == '&' && s[i - 1] != '&' && s[i + 1] != '&')) 
+	    {
+	        isParent = 1;
+	    }
+	    else 
+	    {
+	        isParent = 0;
+	    }
         }
     }
 
