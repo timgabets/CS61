@@ -7,7 +7,7 @@
  * them. The simple commands, background commands, conditional commands (&& and ||),
  * redirections and pipes should be implemented, as well as command interruption. 
  * The shell implements a subset of the bash shell’s syntax, and is generally 
-v * compatible with bash for the features they share.
+vv * compatible with bash for the features they share.
  * 
  * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
@@ -38,9 +38,6 @@ v * compatible with bash for the features they share.
 #define LOGICAL_AND         2  // previous command used && operator
 
 
-int needprompt = 1;
-int bufpos = 0;
-
 // parse_shell_token(str, type, token)
 //    Parse the next token from the shell command `str`. Stores the type of
 //    the token in `*type`; this is one of the TOKEN_ constants. Stores the
@@ -51,6 +48,10 @@ int bufpos = 0;
 //    Returns NULL and sets `*token = NULL` at the end of string.
 
 char* parse_shell_token(char* str, int* type, char** token);
+
+int bufpos = 0;
+int needprompt = 1;
+
 int pipeused = 0;	    // 1 if previous command used pipe for writing. 
                             // Means that current command need to use pipe for reading.
 int command_result;         // Result of the prevous command. Useful in case of logical operations
@@ -58,6 +59,8 @@ int check_previous;         // 0 if previous command was not logical,
                             // LOGICAL_OR (1) if previous command used || operator, and
                             // LOGICAL_AND (2) if previous command used && operator.
 int isParent = 1;
+
+int interrupted = 0;
 
 /**
  * Data structure describing a command. Add your own stuff.
@@ -79,6 +82,8 @@ struct command {
 };
 
 char *lc;    // pointer to last command
+
+pid_t currentPid = -1;
 
 /**
  * [command_alloc allocates and returns a new command structure.]
@@ -300,34 +305,40 @@ void eval_command(command* c) {
         c -> argc--;
     }
 
-
-    // Wait just for the last part of a pipe
+    // START_NEW
+    // Only wait for the last part of a pipe...
     if(c -> piperead == 1 && c -> pipewrite == 0)
     {
+      // Set the last part of the pipe to foregreound
       c->background = 0;
     } else if (c -> piperead == 1 && c -> pipewrite == 1)
     {
+      // set a middle part of the pipe to background
       c->background = 1;
     } else if (c -> piperead == 0 && c -> pipewrite == 1)
     {
+      // set the first part of the pipe to background
       c->background = 1;
     }
+    // END_NEW
 
 
     if( strcmp(c -> argv[0], "cd") != 0)
     {
+        // START_NEW
         // Start of command group...
         // change group id
         if (c->isParent == 1) 
 	{
 	    setpgid(0, 0);
 	}
+	int parentPid = getpid();
+	// END_NEW
 
-        pid = fork();
-        if(pid == 0)
+	pid = fork();
+	if(pid == 0)
         {       
-            
-            // Write to pipe...
+	    // Write to pipe...
             // use command fd's with apropiate connections
             if(c -> pipewrite == 1)
             {
@@ -378,18 +389,48 @@ void eval_command(command* c) {
                     command_free(lastCommand);
                 }
             }
+
+	    // START_NEW
+	    // If it parent command (start of a command group)...
+	    //but it is not a pipe... set_foreground to parent pid
+	    if (c->isParent == 1  && c->pipewrite != 0 && c -> background == 0) 
+	    {
+	        currentPid = parentPid;
+		signal(SIGTTOU, SIG_IGN);
+		set_foreground(parentPid);
+	    }
+	    // If it parent command (start of a command group)...
+	    // and is the start of a pipe... set_foreground to parent pid
+	    if (c->isParent == 1  && c->pipewrite == 0 && c -> background == 1) 
+	    {
+	        currentPid = parentPid;
+		signal(SIGTTOU, SIG_IGN);
+		set_foreground(parentPid);
+	    }
      	          
 	    //If it is not a background process waitpid
             if(c -> background == 0)
 	    {
-	        if (c->isParent == 1) 
-		{
-		
-		  signal(SIGTTOU, SIG_IGN);
-		  set_foreground(pid);
-		}
-		waitpid(pid, &command_result, 0);
+	        waitpid(pid, &command_result, 0);
 	    }
+	
+	    // If it parent command (start of a command group)...
+	    //but it is not a pipe... set_foreground to current pid
+	    if (c->isParent == 1 && c->pipewrite != 0 && c -> background == 0) 
+	    {
+	        signal(SIGTTOU, SIG_IGN);
+		set_foreground(getpid());
+	    }
+	    
+	    // If it parent command (start of a command group)...
+	    // and is the start of a pipe... set_foreground to current pid
+	    if(c -> piperead == 1 && c -> pipewrite == 0)
+	    {
+	        signal(SIGTTOU, SIG_IGN);
+		set_foreground(getpid());
+	    }
+	    // END_NEW
+	    
 	}
     } 
     // cd, actually (first it checks that we are not going into a pipe)
@@ -425,8 +466,9 @@ void build_execute(char* commandList) {
         {
             // SUCCESS || command
             // the rest of the command is not interesting anymore
-            commandList = NULL;
-        }
+            // TODO: this works for tests but not for ./sh61
+	    commandList = NULL;
+	} 
     }
 
     // ... && command
@@ -436,14 +478,17 @@ void build_execute(char* commandList) {
         if(command_result != 0) 
         {
             // FAIL && command
-            commandList = NULL;
-        }
+            // TODO: this works for tests but not for ./sh61  
+	    commandList = NULL;
+	}
     }
     
-    //printf("parent %i comandList: %s\n", isParent, commandList);
     // build the command
     command* c = command_alloc();
+
+    // START_NEW
     c->isParent = isParent;
+    // END_NEW
     while ((commandList = parse_shell_token(commandList, &type, &token)) != NULL)
     {
         command_append_arg(c, token);
@@ -608,6 +653,7 @@ void eval_command_line(const char* s) {
             free(commandList);
             start = i + 1;
 	    
+	    // START_NEW
 	    if (s[i] == ';' || ( s[i] == '&' && s[i - 1] != '&' && s[i + 1] != '&')) 
 	    {
 	        isParent = 1;
@@ -616,6 +662,7 @@ void eval_command_line(const char* s) {
 	    {
 	        isParent = 0;
 	    }
+	    // END_NEW
         }
     }
 
@@ -661,13 +708,10 @@ int set_foreground(pid_t p) {
 // Signal handler to handle ctrl+c
 void signal_handler() 
 {
-    // Print a new prompt
-    // TODO: make new prompt by needpromt = 1
-    // TODO: kill current foreground processes and all related processes
     printf("\nsh61[%d]$ ", getpid());
     fflush(stdout);
     needprompt = 0;
-
+    interrupted = 1;
 }
 
 
@@ -696,12 +740,13 @@ int main(int argc, char* argv[]) {
 	}
 
 	char buf[BUFSIZ];
-	//int bufpos = 0;
 	bufpos = 0;
-	//int needprompt = 1;
 	needprompt = 1;
-
+	
 	while (!feof(command_file)) {
+
+	        
+
 		// Print the prompt at the beginning of the line
 		if (needprompt && !quiet) {
 			printf("sh61[%d]$ ", getpid());
@@ -731,8 +776,18 @@ int main(int argc, char* argv[]) {
 			needprompt = 1;
 		}
 
-		// Handle zombie processes and/or interrupt requests
-		// Your code here!
+		// START_NEW
+		if (interrupted == 1) {
+		    
+		    if (currentPid > 0) 
+		    {
+		        kill(- currentPid, SIGKILL);
+		    }
+		    
+		    interrupted = 0;
+		}
+		// END_NEW
+
 	}
 
 	return 0;
