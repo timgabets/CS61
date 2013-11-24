@@ -7,7 +7,7 @@
  * them. The simple commands, background commands, conditional commands (&& and ||),
  * redirections and pipes should be implemented, as well as command interruption. 
  * The shell implements a subset of the bash shell’s syntax, and is generally 
-vv * compatible with bash for the features they share.
+ * compatible with bash for the features they share.
  * 
  * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
@@ -48,6 +48,8 @@ vv * compatible with bash for the features they share.
 //    Returns NULL and sets `*token = NULL` at the end of string.
 
 char* parse_shell_token(char* str, int* type, char** token);
+
+int set_foreground(pid_t p);
 
 int bufpos = 0;
 int needprompt = 1;
