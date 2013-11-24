@@ -416,6 +416,9 @@ void eval_command(command* c) {
             if(c -> background == 0)
 	    {
 	        waitpid(pid, &command_result, 0);
+	    } else 
+	    {
+	        waitpid(pid, &command_result, WNOHANG);
 	    }
 	
 	    // If it parent command (start of a command group)...
@@ -815,8 +818,10 @@ int main(int argc, char* argv[]) {
 		    
 		    interrupted = 0;
 		}
+		
+		waitpid(-1, 0, WNOHANG);
 		// END_NEW
-
+		
 	}
 
 	return 0;
