@@ -247,14 +247,37 @@ void* pong_thread(void* threadarg) {
              pa.x, pa.y);
 
     http_connection* conn = http_connect(pong_addr);
-    http_send_request(conn, url);
-    http_receive_response_headers(conn);
-    if (conn->status_code != 200)
-        fprintf(stderr, "%.3f sec: warning: %d,%d: "
-                "server returned status %d (expected 200)\n",
-                elapsed(), pa.x, pa.y, conn->status_code);
 
-    http_receive_response_body(conn);
+    // Start Phase 1 code
+    // Repeat until status code is not -1
+    int waitTime = 1;
+    while (1) {
+        conn = http_connect(pong_addr);
+        http_send_request(conn, url);
+	http_receive_response_headers(conn);
+	if (conn->status_code != 200)
+	    fprintf(stderr, "%.3f sec: warning: %d,%d: "
+		    "server returned status %d (expected 200)\n",
+		    elapsed(), pa.x, pa.y, conn->status_code);
+
+	http_receive_response_body(conn);
+
+	// Phase1 check for Status code
+	if (conn->status_code == -1) {
+	    // Status code == -1 Retry...
+	    printf("Server down waiting for %i microseconds\n", waitTime * 100000);
+	    usleep(waitTime * 100000);
+	    // Exponential Backoff...
+	    // Next try wait 2 to the power of waitTime
+	    waitTime = 1 << waitTime;
+	    
+	} else {
+	    // Status code OK... continue. 
+	    break;
+	}
+    }
+    // End Phase 1 code
+
     double result = strtod(conn->buf, NULL);
     if (result < 0) {
         fprintf(stderr, "%.3f sec: server returned error: %s\n",
@@ -268,6 +291,7 @@ void* pong_thread(void* threadarg) {
     pthread_cond_signal(&condvar);
     // and exit!
     pthread_exit(NULL);
+    
 }
 
 

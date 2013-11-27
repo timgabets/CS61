@@ -10,7 +10,7 @@
 #endif
 
 #ifndef PONG_USER
-# define PONG_USER "test"
+# define PONG_USER "timgabets"
 #endif
 
 #endif
