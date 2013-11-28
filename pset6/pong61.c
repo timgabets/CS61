@@ -1,3 +1,17 @@
+/**
+ * CS61 Problem Set 6. Adversarial Network Pong.
+ *
+ * This assignment will teach you some useful and common strategies 
+ * for handling problems common in networking, including loss, delay, 
+ * and low utilization. It will also teach you programming using threads. 
+ * The setting is a game called network pong.
+ * 
+ * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
+ * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
+ * 
+ * November-December 2013
+ */
+
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -71,10 +85,12 @@ static int http_check_response_body(http_connection* conn);
 static void usage(void);
 
 
-// http_connect(ai)
-//    Open a new connection to the server described by `ai`. Returns a new
-//    `http_connection` object for that server connection. Exits with an
-//    error message if the connection fails.
+/**
+ * [http_connect Opens a new connection to the server described by `ai`.]
+ * @param  ai [description]
+ * @return    [Returns a new `http_connection` object for that server 
+ *             connection. Exits with an error message if the connection fails.]
+ */
 http_connection* http_connect(const struct addrinfo* ai) {
     // connect to the server
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -102,17 +118,22 @@ http_connection* http_connect(const struct addrinfo* ai) {
 }
 
 
-// http_close(conn)
-//    Close the HTTP connection `conn` and free its resources.
+/**
+ * [http_close    Closes the HTTP connection `conn` and free its resources.]
+ * @param conn [description]
+ */
 void http_close(http_connection* conn) {
     close(conn->fd);
     free(conn);
 }
 
 
-// http_send_request(conn, uri)
-//    Send an HTTP POST request for `uri` to connection `conn`.
-//    Exit on error.
+/**
+ * [http_send_request Sends an HTTP POST request for `uri` to connection `conn`.
+ *                    Exit on error.]
+ * @param conn [description]
+ * @param uri  [description]
+ */
 void http_send_request(http_connection* conn, const char* uri) {
     assert(conn->state == HTTP_REQUEST || conn->state == HTTP_DONE);
 
@@ -151,10 +172,11 @@ void http_send_request(http_connection* conn, const char* uri) {
 }
 
 
-// http_receive_response_headers(conn)
-//    Read the server's response headers. On return, `conn->status_code`
-//    holds the server's status code. If the connection terminates
-//    prematurely, `conn->status_code` is -1.
+/**
+ * [http_receive_response_headers Read the server's response headers. ]
+ * @param conn [On return, `conn->status_code` holds the server's status code. 
+ *              If the connection terminates prematurely, `conn->status_code` is -1.]
+ */
 void http_receive_response_headers(http_connection* conn) {
     assert(conn->state != HTTP_REQUEST);
     if (conn->state < 0)
@@ -184,10 +206,12 @@ void http_receive_response_headers(http_connection* conn) {
 }
 
 
-// http_receive_response_body(conn)
-//    Read the server's response body. On return, `conn->buf` holds the
-//    response body, which is `conn->len` bytes long and has been
-//    null-terminated.
+/**
+ * [http_receive_response_body Read the server's response body. On return, 
+ * `conn->buf` holds theresponse body, which is `conn->len` bytes long and has 
+ * been null-terminated.]
+ * @param conn [description]
+ */
 void http_receive_response_body(http_connection* conn) {
     assert(conn->state < 0 || conn->state == HTTP_BODY);
     if (conn->state < 0)
@@ -210,9 +234,13 @@ void http_receive_response_body(http_connection* conn) {
 }
 
 
-// http_truncate_response(conn)
-//    Truncate the `conn` response text to a manageable length and return
-//    that truncated text. Useful for error messages.
+/**
+ * [http_truncate_response Truncate the `conn` response text to a manageable 
+ *                         length and return that truncated text. Useful for 
+ *                         error messages.]
+ * @param  conn [description]
+ * @return      [description]
+ */
 char* http_truncate_response(http_connection* conn) {
     char *eol = strchr(conn->buf, '\n');
     if (eol)
@@ -233,9 +261,11 @@ typedef struct pong_args {
 pthread_mutex_t mutex;
 pthread_cond_t condvar;
 
-// pong_thread(threadarg)
-//    Connect to the server at the position indicated by `threadarg`
-//    (which is a pointer to a `pong_args` structure).
+/**
+ * [pong_thread Connect to the server at the position indicated by `threadarg`
+ * (which is a pointer to a `pong_args` structure).]
+ * @param threadarg [description]
+ */
 void* pong_thread(void* threadarg) {
     pthread_detach(pthread_self());
 
@@ -254,17 +284,18 @@ void* pong_thread(void* threadarg) {
     while (1) {
         conn = http_connect(pong_addr);
         http_send_request(conn, url);
-	http_receive_response_headers(conn);
-	if (conn->status_code != 200)
-	    fprintf(stderr, "%.3f sec: warning: %d,%d: "
-		    "server returned status %d (expected 200)\n",
+        http_receive_response_headers(conn);
+	
+        if (conn->status_code != 200)
+            fprintf(stderr, "%.3f sec: warning: %d,%d: "
+                "server returned status %d (expected 200)\n",
 		    elapsed(), pa.x, pa.y, conn->status_code);
 
-	http_receive_response_body(conn);
+        http_receive_response_body(conn);
 
 	// Phase1 check for Status code
 	if (conn->status_code == -1) {
-	    // Status code == -1 Retry...
+	    // Retry...
 	    printf("Server down waiting for %i microseconds\n", waitTime * 100000);
 	    usleep(waitTime * 100000);
 	    // Exponential Backoff...
@@ -295,16 +326,21 @@ void* pong_thread(void* threadarg) {
 }
 
 
-// usage()
-//    Explain how pong61 should be run.
+/**
+ * [usage Explains how pong61 should be run.]
+ */
 static void usage(void) {
     fprintf(stderr, "Usage: ./pong61 [-h HOST] [-p PORT] [USER]\n");
     exit(1);
 }
 
 
-// main(argc, argv)
-//    The main loop.
+/**
+ * [main The main loop]
+ * @param  argc [number of arguments]
+ * @param  argv [arguments]
+ * @return      [description]
+ */
 int main(int argc, char** argv) {
     // parse arguments
     int ch, nocheck = 0;
@@ -405,12 +441,12 @@ int main(int argc, char** argv) {
 }
 
 
-// HTTP PARSING
-
-// http_process_response_headers(conn)
-//    Parse the response represented by `conn->buf`. Returns 1
-//    if more header data remains to be read, 0 if all headers
-//    have been consumed.
+/**
+ * [http_process_response_headers Parse the response represented by `conn->buf`. Returns 1
+ * if more header data remains to be read, 0 if all headers have been consumed.] 
+ * @param  conn [description]
+ * @return      [description]
+ */
 static int http_process_response_headers(http_connection* conn) {
     size_t i = 0;
     while ((conn->state == HTTP_INITIAL || conn->state == HTTP_HEADERS)
@@ -443,9 +479,12 @@ static int http_process_response_headers(http_connection* conn) {
 }
 
 
-// http_check_response_body(conn)
-//    Returns 1 if more response data should be read into `conn->buf`,
-//    0 if the connection is broken or the response is complete.
+/**
+ * [http_check_response_body description]
+ * @param  conn [description]
+ * @return      [1 if more response data should be read into `conn->buf`,
+ *               0 if the connection is broken or the response is complete.]
+ */
 static int http_check_response_body(http_connection* conn) {
     if (conn->state == HTTP_BODY
         && (conn->has_content_length || conn->eof)
