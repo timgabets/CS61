@@ -258,6 +258,7 @@ char* http_truncate_response(http_connection* conn) {
 typedef struct pong_args {
     int x;
     int y;
+    int state;
 } pong_args;
 
 pthread_mutex_t mutex;
@@ -284,23 +285,26 @@ void* pong_thread(void* threadarg) {
     // Repeat until status code is not -1
     int waitTime = 1;
     int skip = 0;
+
     while (1)
     {
-        conn = http_connect(pong_addr);
-	http_send_request(conn, url);
-	http_receive_response_headers(conn);
-	
-	// Phase 2: open a new thread to read the body 
-	if (conn->status_code == 200)
+        if(pa.state != HTTP_DONE)
         {
-	    printf("Read body open connection number %i\n", openConnections);
-	    skip = 1;
-	    pthread_cond_signal(&condvar);
-	    http_receive_response_body(conn);
-	    break;
-	    
+            conn = http_connect(pong_addr);
+            http_send_request(conn, url);
+            http_receive_response_headers(conn);
         }
-	else if(conn->status_code == -1)
+	
+        // Phase 2: open a new thread to read the body 
+        if (conn->status_code == 200)
+        {
+            printf("Read body open connection number %i\n", openConnections);
+            skip = 1;
+            pthread_cond_signal(&condvar);
+            http_receive_response_body(conn);
+            break;
+        }
+        else if(conn->status_code == -1)
         {
             // Retry...
             printf("Server down waiting for %i microseconds\n", waitTime * 100000);
@@ -311,7 +315,6 @@ void* pong_thread(void* threadarg) {
         }else
         {
             fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
-            
         }
     }
     // End Phase 1 code
@@ -330,6 +333,8 @@ void* pong_thread(void* threadarg) {
     {
         pthread_cond_signal(&condvar);
     }
+
+
     // decrement connections
     openConnections --;
     // and exit!
@@ -417,22 +422,30 @@ int main(int argc, char** argv) {
     // play game
     int x = 0, y = 0, dx = 1, dy = 1;
     char url[BUFSIZ];
-    while (1) {
-        // create a new thread to handle the next position
+
+    while (1)
+    {
+        // handling connection
+        http_connection* conn = http_connect(pong_addr);
+        http_send_request(conn, url);
+        http_receive_response_headers(conn);
+
         pong_args pa;
         pa.x = x;
         pa.y = y;
+        pa.state = conn -> state;
+
+        // creating new thread to handle the next position
         pthread_t pt;
-        r = pthread_create(&pt, NULL, pong_thread, &pa);
-        if (r != 0) {
-            fprintf(stderr, "%.3f sec: pthread_create: %s\n",
-                    elapsed(), strerror(r));
+        if (pthread_create(&pt, NULL, pong_thread, &pa))
+        {
+            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
             exit(1);
         }
 
-	// set the start time of the thread and increment connections
-	startTime = elapsed();
-	openConnections ++;
+        startTime = elapsed();
+        openConnections ++;
+
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
