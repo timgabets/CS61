@@ -31,6 +31,9 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
+// Global variables
+int openConnections = 0;
+double startTime;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -275,22 +278,29 @@ void* pong_thread(void* threadarg) {
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on",
              pa.x, pa.y);
 
-    http_connection* conn = http_connect(pong_addr);
+    http_connection* conn;
 
     // Start Phase 1 code
     // Repeat until status code is not -1
     int waitTime = 1;
+    int skip = 0;
     while (1)
     {
         conn = http_connect(pong_addr);
-        http_send_request(conn, url);
-        http_receive_response_headers(conn);
+	http_send_request(conn, url);
+	http_receive_response_headers(conn);
 	
-        if (conn->status_code == 200)
+	// Phase 2: open a new thread to read the body 
+	if (conn->status_code == 200)
         {
-            // Status code OK... break from while
-            break; 
-        }else if(conn->status_code == -1)
+	    printf("Read body open connection number %i\n", openConnections);
+	    skip = 1;
+	    pthread_cond_signal(&condvar);
+	    http_receive_response_body(conn);
+	    break;
+	    
+        }
+	else if(conn->status_code == -1)
         {
             // Retry...
             printf("Server down waiting for %i microseconds\n", waitTime * 100000);
@@ -301,7 +311,7 @@ void* pong_thread(void* threadarg) {
         }else
         {
             fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
-            http_receive_response_body(conn);
+            
         }
     }
     // End Phase 1 code
@@ -316,7 +326,12 @@ void* pong_thread(void* threadarg) {
     http_close(conn);
 
     // signal the main thread to continue
-    pthread_cond_signal(&condvar);
+    if (skip == 0) 
+    {
+        pthread_cond_signal(&condvar);
+    }
+    // decrement connections
+    openConnections --;
     // and exit!
     pthread_exit(NULL);
     
@@ -415,6 +430,9 @@ int main(int argc, char** argv) {
             exit(1);
         }
 
+	// set the start time of the thread and increment connections
+	startTime = elapsed();
+	openConnections ++;
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
