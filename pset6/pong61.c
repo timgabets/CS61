@@ -33,7 +33,10 @@ static struct addrinfo* pong_addr;
 
 // Global variables
 int openConnections = 0;
+int openThreads = 0;
 double startTime;
+// head of the connection table
+char*headCT = (char*)"h";
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -69,6 +72,7 @@ struct http_connection {
 
     char buf[BUFSIZ];       // Response buffer
     size_t len;             // Length of response buffer
+    struct http_connection *next;
 };
 
 // `http_connection::state` constants
@@ -116,6 +120,7 @@ http_connection* http_connect(const struct addrinfo* ai) {
     conn->fd = fd;
     conn->state = HTTP_REQUEST;
     conn->eof = 0;
+    conn->next = NULL;
     return conn;
 }
 
@@ -290,15 +295,69 @@ void* pong_thread(void* threadarg) {
     {
         if(pa.state != HTTP_DONE)
         {
-            conn = http_connect(pong_addr);
-            http_send_request(conn, url);
-            http_receive_response_headers(conn);
-        }
-	
+	    // Phase 3 start
+	    // if first connection make it the header of the linked list
+	    if (*headCT == 'h') 
+	    {
+	        conn = http_connect(pong_addr);
+		openConnections ++;
+		headCT = (char*)conn;
+	    }	
+	    else 
+	    {	     
+	        // Get the the first connection
+	        http_connection *nextConn = (http_connection*)headCT;
+		
+		// If the first connection is availeable... use it. 
+		if (nextConn->state == HTTP_DONE) 
+		{
+		    conn = (http_connection*)nextConn;
+		}
+
+		// If next connection is null add a connectione to linked list
+		else if (nextConn->next == NULL) 
+		{
+		    conn = http_connect(pong_addr);
+		    openConnections ++;
+		    nextConn->next = conn;
+		} 
+		else 
+		{ 
+		    // Loop thorugh linked list 
+		    while(nextConn->next != NULL) 
+		    {
+		        http_connection *nextConnTemp = nextConn->next;
+			nextConn = nextConnTemp;
+		    
+			// Found a free connection... use it. 
+			if(nextConn->state == HTTP_DONE) 
+			{
+			    conn = (http_connection*)nextConn;
+			    conn->state = HTTP_REQUEST;
+			    conn->eof = 0;
+			    break;
+			} 
+			
+			// No free connection add a connection to linked list
+			else if (nextConn->next == NULL) 
+			{
+			    conn = http_connect(pong_addr);
+			    openConnections ++;
+			    nextConn->next = conn;
+			    break;
+			}
+		    }
+		}
+	    }
+	} // Phase 3 end
+ 
+	http_send_request(conn, url);
+	http_receive_response_headers(conn);
+
         // Phase 2: open a new thread to read the body 
         if (conn->status_code == 200)
         {
-            printf("Read body open connection number %i\n", openConnections);
+	  printf("Read body open threads: %i open connections: %i\n", openThreads, openConnections);
             skip = 1;
             pthread_cond_signal(&condvar);
             http_receive_response_body(conn);
@@ -326,7 +385,7 @@ void* pong_thread(void* threadarg) {
         exit(1);
     }
 
-    http_close(conn);
+    //http_close(conn);
 
     // signal the main thread to continue
     if (skip == 0) 
@@ -336,7 +395,7 @@ void* pong_thread(void* threadarg) {
 
 
     // decrement connections
-    openConnections --;
+    openThreads --;
     // and exit!
     pthread_exit(NULL);
     
@@ -426,14 +485,14 @@ int main(int argc, char** argv) {
     while (1)
     {
         // handling connection
-        http_connection* conn = http_connect(pong_addr);
-        http_send_request(conn, url);
-        http_receive_response_headers(conn);
+        //http_connection* conn = http_connect(pong_addr);
+        //http_send_request(conn, url);
+        //http_receive_response_headers(conn);
 
         pong_args pa;
         pa.x = x;
         pa.y = y;
-        pa.state = conn -> state;
+        //pa.state = conn -> state;
 
         // creating new thread to handle the next position
         pthread_t pt;
@@ -444,7 +503,7 @@ int main(int argc, char** argv) {
         }
 
         startTime = elapsed();
-        openConnections ++;
+        openThreads ++;
 
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
