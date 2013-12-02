@@ -367,7 +367,7 @@ void* pong_thread(void* threadarg) {
                 pthread_cond_signal(&condvar);
                 http_receive_response_body(conn);
                 break;
-            }else if(strstr(conn -> buf, "STOP") != NULL && conn -> buf[0] == '+')
+            }else if( conn -> buf[0] == '+' && strstr(conn -> buf, "STOP") != NULL)
             {
                 pthread_mutex_lock(&shutUpEverybody);
                 char* waitTimeString = &(conn -> buf[1]);
@@ -377,7 +377,7 @@ void* pong_thread(void* threadarg) {
 
                 waitTimeString[i] = '\0';
                 waitTime = atoi(waitTimeString);    // microseconds
-                printf("Server sent +%d STOP \n", waitTime);
+                printf("Server sent \"+%d STOP\" \n", waitTime);
 
                 usleep(waitTime * 1000);            // milliseconds
                 pthread_mutex_unlock(&shutUpEverybody);
@@ -387,7 +387,7 @@ void* pong_thread(void* threadarg) {
         else if(conn->status_code == -1)
         {
             // Retry...
-            printf("Server down waiting for %i microseconds\n", waitTime * 100000);
+            printf("Server down. Waiting for %i microseconds\n", waitTime * 100000);
             usleep(waitTime * 100000);
             // Exponential Backoff...
             // Next try wait 2 to the power of waitTime
