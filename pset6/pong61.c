@@ -267,6 +267,7 @@ typedef struct pong_args {
 } pong_args;
 
 pthread_mutex_t mutex;
+pthread_mutex_t shutUpEverybody;
 pthread_cond_t condvar;
 
 /**
@@ -281,8 +282,10 @@ void* pong_thread(void* threadarg) {
     pong_args pa = *((pong_args*) threadarg);
 
     char url[256];
+    pthread_mutex_lock(&shutUpEverybody);
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on",
              pa.x, pa.y);
+    pthread_mutex_unlock(&shutUpEverybody);
 
     http_connection* conn;
 
@@ -300,8 +303,8 @@ void* pong_thread(void* threadarg) {
 	    if (*headCT == 'h') 
 	    {
 	        conn = http_connect(pong_addr);
-		openConnections ++;
-		headCT = (char*)conn;
+    		openConnections ++;
+    		headCT = (char*)conn;
 	    }	
 	    else 
 	    {	     
@@ -327,7 +330,7 @@ void* pong_thread(void* threadarg) {
 		    while(nextConn->next != NULL) 
 		    {
 		        http_connection *nextConnTemp = nextConn->next;
-			nextConn = nextConnTemp;
+                nextConn = nextConnTemp;
 		    
 			// Found a free connection... use it. 
 			if(nextConn->state == HTTP_DONE) 
@@ -349,19 +352,37 @@ void* pong_thread(void* threadarg) {
 		    }
 		}
 	    }
-	} // Phase 3 end
+	} 
  
 	http_send_request(conn, url);
 	http_receive_response_headers(conn);
 
-        // Phase 2: open a new thread to read the body 
         if (conn->status_code == 200)
         {
-	  printf("Read body open threads: %i open connections: %i\n", openThreads, openConnections);
-            skip = 1;
-            pthread_cond_signal(&condvar);
-            http_receive_response_body(conn);
-            break;
+            int result = strncmp("0 OK", conn -> buf, 4);
+            if( result == 0 )
+            {
+                printf("Read body open threads: %i open connections: %i\n", openThreads, openConnections);
+                skip = 1;
+                pthread_cond_signal(&condvar);
+                http_receive_response_body(conn);
+                break;
+            }else if(strstr(conn -> buf, "STOP") != NULL && conn -> buf[0] == '+')
+            {
+                pthread_mutex_lock(&shutUpEverybody);
+                char* waitTimeString = &(conn -> buf[1]);
+                int i = 0;
+                while(waitTimeString[i] != ' ')
+                    i++;
+
+                waitTimeString[i] = '\0';
+                waitTime = atoi(waitTimeString);    // microseconds
+                printf("Server sent +%d STOP \n", waitTime);
+
+                usleep(waitTime * 1000);            // milliseconds
+                pthread_mutex_unlock(&shutUpEverybody);
+            }
+
         }
         else if(conn->status_code == -1)
         {
@@ -376,7 +397,6 @@ void* pong_thread(void* threadarg) {
             fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
         }
     }
-    // End Phase 1 code
     
     double result = strtod(conn->buf, NULL);
     if (result < 0) {
@@ -476,6 +496,7 @@ int main(int argc, char** argv) {
 
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&shutUpEverybody, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
