@@ -380,8 +380,10 @@ void* pong_thread(void* threadarg) {
                 printf("Server sent \"+%d STOP\" \n", waitTime);
 
                 usleep(waitTime * 1000);            // milliseconds
+
                 pthread_mutex_unlock(&shutUpEverybody);
-            }
+            }else
+                break;
 
         }
         else if(conn->status_code == -1)
