@@ -377,13 +377,15 @@ void* pong_thread(void* threadarg) {
 
                 waitTimeString[i] = '\0';
                 waitTime = atoi(waitTimeString);    // microseconds
-                printf("Server sent \"+%d STOP\" \n", waitTime);
+                printf("Server sent \"+%d STOP\" \n%s\n", waitTime, conn -> buf);
 
                 usleep(waitTime * 1000);            // milliseconds
-
+                waitTime = 0;
                 pthread_mutex_unlock(&shutUpEverybody);
             }else
+            {
                 break;
+            }
 
         }
         else if(conn->status_code == -1)
