@@ -115,8 +115,7 @@ http_connection* http_connect(const struct addrinfo* ai) {
     }
 
     // construct an http_connection object for this connection
-    http_connection* conn =
-        (http_connection*) malloc(sizeof(http_connection));
+    http_connection* conn = (http_connection*) malloc(sizeof(http_connection));
     conn->fd = fd;
     conn->state = HTTP_REQUEST;
     conn->eof = 0;
@@ -281,148 +280,72 @@ void* pong_thread(void* threadarg) {
     // Copy thread arguments onto our stack.
     pong_args pa = *((pong_args*) threadarg);
 
+    int waitTime = 100;
     char url[256];
-    pthread_mutex_lock(&shutUpEverybody);
-    snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on",
-             pa.x, pa.y);
-    pthread_mutex_unlock(&shutUpEverybody);
 
-    http_connection* conn;
+    snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
+    http_connection* conn = http_connect(pong_addr);
 
-    // Start Phase 1 code
-    // Repeat until status code is not -1
-    int waitTime = 1;
-    int skip = 0;
-
-    while (1)
+    while(1)
     {
-        if(pa.state != HTTP_DONE)
+        // HTTP_REQUEST 0      // Request not sent yet
+        // HTTP_INITIAL 1      
+        // 
+        // HTTP_BODY    3      
+        // HTTP_DONE    (-1)   
+        // HTTP_CLOSED  (-2)   
+        // HTTP_BROKEN  (-3)   // Parse error
+        switch(conn -> state)
         {
-	    // Phase 3 start
-	    // if first connection make it the header of the linked list
-	    if (*headCT == 'h') 
-	    {
-	        conn = http_connect(pong_addr);
-    		openConnections ++;
-    		headCT = (char*)conn;
-	    }	
-	    else 
-	    {	     
-	        // Get the the first connection
-	        http_connection *nextConn = (http_connection*)headCT;
-		
-		// If the first connection is availeable... use it. 
-		if (nextConn->state == HTTP_DONE) 
-		{
-		    conn = (http_connection*)nextConn;
-		}
+            case HTTP_REQUEST:
+                http_send_request(conn, url);
+                break;
 
-		// If next connection is null add a connectione to linked list
-		else if (nextConn->next == NULL) 
-		{
-		    conn = http_connect(pong_addr);
-		    openConnections ++;
-		    nextConn->next = conn;
-		} 
-		else 
-		{ 
-		    // Loop thorugh linked list 
-		    while(nextConn->next != NULL) 
-		    {
-		        http_connection *nextConnTemp = nextConn->next;
-                nextConn = nextConnTemp;
-		    
-			// Found a free connection... use it. 
-			if(nextConn->state == HTTP_DONE) 
-			{
-			    conn = (http_connection*)nextConn;
-			    conn->state = HTTP_REQUEST;
-			    conn->eof = 0;
-			    break;
-			} 
-			
-			// No free connection add a connection to linked list
-			else if (nextConn->next == NULL) 
-			{
-			    conn = http_connect(pong_addr);
-			    openConnections ++;
-			    nextConn->next = conn;
-			    break;
-			}
-		    }
-		}
-	    }
-	} 
- 
-	http_send_request(conn, url);
-	http_receive_response_headers(conn);
+            case HTTP_INITIAL:
+                // Before first line of response
+                http_receive_response_headers(conn);
+                break;
 
-        if (conn->status_code == 200)
-        {
-            int result = strncmp("0 OK", conn -> buf, 4);
-            if( result == 0 )
-            {
-                printf("Read body open threads: %i open connections: %i\n", openThreads, openConnections);
-                skip = 1;
-                pthread_cond_signal(&condvar);
+            case HTTP_HEADERS:
+                // After first line of response, in headers
+                // TODO: what should happen here?
+                break;
+
+            case HTTP_BODY:
+                // In body:
                 http_receive_response_body(conn);
+                double result = strtod(conn->buf, NULL);
+                if (result < 0) {
+                    fprintf(stderr, "%.3f sec: server returned error: %s\n",
+                            elapsed(), http_truncate_response(conn));
+                    exit(1);
+                }
                 break;
-            }else if( conn -> buf[0] == '+' && strstr(conn -> buf, "STOP") != NULL)
-            {
-                pthread_mutex_lock(&shutUpEverybody);
-                char* waitTimeString = &(conn -> buf[1]);
-                int i = 0;
-                while(waitTimeString[i] != ' ')
-                    i++;
 
-                waitTimeString[i] = '\0';
-                waitTime = atoi(waitTimeString);    // microseconds
-                printf("Server sent \"+%d STOP\" \n%s\n", waitTime, conn -> buf);
-
-                usleep(waitTime * 1000);            // milliseconds
-                waitTime = 0;
-                pthread_mutex_unlock(&shutUpEverybody);
-            }else
-            {
+            case HTTP_BROKEN:
+                // Parse error
+                if(conn -> status_code == -1)
+                {
+                    // Retry...
+                    printf("Server down. Waiting for %i microseconds\n", waitTime);
+                    usleep(waitTime);
+                    // Exponential Backoff...
+                    // Next try wait 2 to the power of waitTime
+                    waitTime *= 2;
+                    http_close(conn);
+                    conn = http_connect(pong_addr);
+                }
                 break;
-            }
 
+            case HTTP_DONE:
+                // Body complete, available for a new request
+            case HTTP_CLOSED:
+                // Body complete, connection closed
+                http_close(conn);
+                pthread_cond_signal(&condvar);
+                pthread_exit(NULL);
         }
-        else if(conn->status_code == -1)
-        {
-            // Retry...
-            printf("Server down. Waiting for %i microseconds\n", waitTime * 100000);
-            usleep(waitTime * 100000);
-            // Exponential Backoff...
-            // Next try wait 2 to the power of waitTime
-            waitTime = 1 << waitTime;
-        }else
-        {
-            fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
-        }
-    }
-    
-    double result = strtod(conn->buf, NULL);
-    if (result < 0) {
-        fprintf(stderr, "%.3f sec: server returned error: %s\n",
-                elapsed(), http_truncate_response(conn));
-        exit(1);
-    }
-
-    //http_close(conn);
-
-    // signal the main thread to continue
-    if (skip == 0) 
-    {
-        pthread_cond_signal(&condvar);
-    }
-
-
-    // decrement connections
-    openThreads --;
-    // and exit!
-    pthread_exit(NULL);
-    
+    }    
 }
 
 
@@ -509,15 +432,9 @@ int main(int argc, char** argv) {
 
     while (1)
     {
-        // handling connection
-        //http_connection* conn = http_connect(pong_addr);
-        //http_send_request(conn, url);
-        //http_receive_response_headers(conn);
-
         pong_args pa;
         pa.x = x;
         pa.y = y;
-        //pa.state = conn -> state;
 
         // creating new thread to handle the next position
         pthread_t pt;
@@ -528,7 +445,6 @@ int main(int argc, char** argv) {
         }
 
         startTime = elapsed();
-        openThreads ++;
 
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
