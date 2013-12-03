@@ -288,13 +288,6 @@ void* pong_thread(void* threadarg) {
 
     while(1)
     {
-        // HTTP_REQUEST 0      // Request not sent yet
-        // HTTP_INITIAL 1      
-        // 
-        // HTTP_BODY    3      
-        // HTTP_DONE    (-1)   
-        // HTTP_CLOSED  (-2)   
-        // HTTP_BROKEN  (-3)   // Parse error
         switch(conn -> state)
         {
             case HTTP_REQUEST:
