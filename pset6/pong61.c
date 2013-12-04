@@ -26,6 +26,8 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
+#define MAXTHREADS 3
+
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
@@ -35,8 +37,21 @@ static struct addrinfo* pong_addr;
 int openConnections = 0;
 int openThreads = 0;
 double startTime;
-// head of the connection table
-char*headCT = (char*)"h";
+
+typedef struct pong_args {
+    int x;
+    int y;
+    int state;
+} pong_args;
+
+pong_args pa;
+int threadsNumber = 0;
+int width, height;      // board dimensions
+
+pthread_mutex_t mutex;
+pthread_mutex_t positionMutex;
+pthread_mutex_t activeThread;
+pthread_cond_t condvar;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -257,21 +272,9 @@ char* http_truncate_response(http_connection* conn) {
 }
 
 
-// MAIN PROGRAM
-
-typedef struct pong_args {
-    int x;
-    int y;
-    int state;
-} pong_args;
-
-pthread_mutex_t mutex;
-pthread_mutex_t positionMutex;
-pthread_cond_t condvar;
-
 /**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
- * (which is a pointer to a `pong_args` structure).]
+ *              (which is a pointer to a `pong_args` structure).]
  * @param threadarg [description]
  */
 void* pong_thread(void* threadarg) {
@@ -285,6 +288,7 @@ void* pong_thread(void* threadarg) {
 
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
     http_connection* conn = http_connect(pong_addr);
+    pthread_mutex_lock(&activeThread);
 
     while(1)
     {
@@ -323,6 +327,7 @@ void* pong_thread(void* threadarg) {
                     printf("Server down. Waiting for %i microseconds\n", waitTime);
                     usleep(waitTime);
                     waitTime *= 2;
+                
                     http_close(conn);
                     conn = http_connect(pong_addr);
                     pthread_mutex_unlock(&positionMutex);
@@ -337,6 +342,7 @@ void* pong_thread(void* threadarg) {
             case HTTP_CLOSED:
                 // Body complete, connection closed
                 http_close(conn);
+                pthread_mutex_unlock(&activeThread);
                 pthread_cond_signal(&condvar);
                 pthread_exit(NULL);
         }
@@ -393,7 +399,6 @@ int main(int argc, char** argv) {
     }
 
     // reset pong board and get its dimensions
-    int width, height;
     {
         http_connection* conn = http_connect(pong_addr);
         http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
@@ -419,24 +424,24 @@ int main(int argc, char** argv) {
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&positionMutex, NULL);
+    pthread_mutex_init(&activeThread, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
+    //  char url[BUFSIZ];
+    pthread_t thr_pong[MAXTHREADS + 1];
     int x = 0, y = 0, dx = 1, dy = 1;
-    char url[BUFSIZ];
 
+    // managing pong threads:
     while (1)
     {
-        pong_args pa;
         pa.x = x;
         pa.y = y;
 
-        // creating new thread to handle the next position
-        pthread_t pt;
-        if (pthread_create(&pt, NULL, pong_thread, &pa))
+        if(threadsNumber <= MAXTHREADS)
         {
-            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
-            exit(1);
+            pthread_create(&thr_pong[threadsNumber], NULL, pong_thread, &pa);
+            threadsNumber++;
         }
 
         startTime = elapsed();
@@ -445,8 +450,8 @@ int main(int argc, char** argv) {
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
         pthread_mutex_unlock(&mutex);
+        threadsNumber--;
 
-        // update position
         pthread_mutex_lock(&positionMutex);
         x += dx;
         y += dy;
