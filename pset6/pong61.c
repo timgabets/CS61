@@ -26,7 +26,7 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 3
+#define MAXTHREADS 2
 
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
@@ -285,6 +285,9 @@ void* pong_thread(void* threadarg) {
 
     int waitTime = 10;  // microseconds
     char url[256];
+    double headersTime;
+    double bodyTime;
+    double delay;       // time delay between headers and body
 
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
     http_connection* conn = http_connect(pong_addr);
@@ -298,29 +301,24 @@ void* pong_thread(void* threadarg) {
                 http_send_request(conn, url);
                 break;
 
-            case HTTP_INITIAL:
-                // Before first line of response
+            case HTTP_INITIAL:      // Before first line of response
                 http_receive_response_headers(conn);
                 break;
 
-            case HTTP_HEADERS:
-                // After first line of response, in headers
+            case HTTP_HEADERS:      // After first line of response, in headers
                 // TODO: what should happen here?
                 break;
 
-            case HTTP_BODY:
-                // In body:
+            case HTTP_BODY:     // In body
                 http_receive_response_body(conn);
                 double result = strtod(conn->buf, NULL);
                 if (result < 0) {
-                    fprintf(stderr, "%.3f sec: server returned error: %s\n",
-                            elapsed(), http_truncate_response(conn));
+                    fprintf(stderr, "%.3f sec: server returned error: %s\n", elapsed(), http_truncate_response(conn));
                     exit(1);
                 }
                 break;
 
-            case HTTP_BROKEN:
-                // Parse error
+            case HTTP_BROKEN:   // Parse error
                 if(conn -> status_code == -1)
                 {
                     pthread_mutex_lock(&positionMutex);
@@ -334,13 +332,11 @@ void* pong_thread(void* threadarg) {
                 }
                 break;
 
-            case HTTP_DONE:
-                // Body complete, available for a new request
+            case HTTP_DONE:     // Body complete, available for a new request
                 //http_send_request(conn, url);
                 //break;
 
-            case HTTP_CLOSED:
-                // Body complete, connection closed
+            case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 pthread_mutex_unlock(&activeThread);
                 pthread_cond_signal(&condvar);
@@ -431,13 +427,18 @@ int main(int argc, char** argv) {
     //  char url[BUFSIZ];
     pthread_t thr_pong[MAXTHREADS + 1];
     int x = 0, y = 0, dx = 1, dy = 1;
-
+    pa.x = x;
+    pa.y = y;
+    
+    for(int i = 0; i < MAXTHREADS; i++)
+    {
+        pthread_create(&thr_pong[i], NULL, pong_thread, &pa);
+        threadsNumber++;
+    }
+    
     // managing pong threads:
     while (1)
     {
-        pa.x = x;
-        pa.y = y;
-
         if(threadsNumber <= MAXTHREADS)
         {
             pthread_create(&thr_pong[threadsNumber], NULL, pong_thread, &pa);
@@ -452,7 +453,6 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock(&mutex);
         threadsNumber--;
 
-        pthread_mutex_lock(&positionMutex);
         x += dx;
         y += dy;
         if (x < 0 || x >= width) {
@@ -463,6 +463,10 @@ int main(int argc, char** argv) {
             dy = -dy;
             y += 2 * dy;
         }
+        
+        pthread_mutex_lock(&positionMutex);
+        pa.x = x;
+        pa.y = y;
         pthread_mutex_unlock(&positionMutex);
 
         // wait 0.1sec
