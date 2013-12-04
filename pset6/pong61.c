@@ -266,7 +266,7 @@ typedef struct pong_args {
 } pong_args;
 
 pthread_mutex_t mutex;
-pthread_mutex_t shutUpEverybody;
+pthread_mutex_t positionMutex;
 pthread_cond_t condvar;
 
 /**
@@ -280,7 +280,7 @@ void* pong_thread(void* threadarg) {
     // Copy thread arguments onto our stack.
     pong_args pa = *((pong_args*) threadarg);
 
-    int waitTime = 100;
+    int waitTime = 1;
     char url[256];
 
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
@@ -319,19 +319,21 @@ void* pong_thread(void* threadarg) {
                 // Parse error
                 if(conn -> status_code == -1)
                 {
-                    // Retry...
+                    pthread_mutex_lock(&positionMutex);
                     printf("Server down. Waiting for %i microseconds\n", waitTime);
                     usleep(waitTime);
-                    // Exponential Backoff...
-                    // Next try wait 2 to the power of waitTime
                     waitTime *= 2;
                     http_close(conn);
                     conn = http_connect(pong_addr);
+                    pthread_mutex_unlock(&positionMutex);
                 }
                 break;
 
             case HTTP_DONE:
                 // Body complete, available for a new request
+                //http_send_request(conn, url);
+                //break;
+
             case HTTP_CLOSED:
                 // Body complete, connection closed
                 http_close(conn);
@@ -416,7 +418,7 @@ int main(int argc, char** argv) {
 
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&shutUpEverybody, NULL);
+    pthread_mutex_init(&positionMutex, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
@@ -445,6 +447,7 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock(&mutex);
 
         // update position
+        pthread_mutex_lock(&positionMutex);
         x += dx;
         y += dy;
         if (x < 0 || x >= width) {
@@ -455,6 +458,7 @@ int main(int argc, char** argv) {
             dy = -dy;
             y += 2 * dy;
         }
+        pthread_mutex_unlock(&positionMutex);
 
         // wait 0.1sec
         usleep(100000);
