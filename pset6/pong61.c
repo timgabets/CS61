@@ -273,6 +273,20 @@ char* http_truncate_response(http_connection* conn) {
 
 
 /**
+ * [body_thread provides receiving response body. While receiving, the 'parent' thread
+ *                       is counting time. Implemented for Phase2]
+ * @param unused [unused]
+ */
+void* body_thread(void* connection)
+{
+    http_connection* conn = (http_connection*) connection;
+
+    http_receive_response_body(conn);
+    pthread_exit(NULL);
+}
+
+
+/**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
  *              (which is a pointer to a `pong_args` structure).]
  * @param threadarg [description]
@@ -285,9 +299,7 @@ void* pong_thread(void* threadarg) {
 
     int waitTime = 10;  // microseconds
     char url[256];
-    double headersTime;
-    double bodyTime;
-    double delay;       // time delay between headers and body
+    pthread_t thr_body;
 
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
     http_connection* conn = http_connect(pong_addr);
@@ -310,12 +322,18 @@ void* pong_thread(void* threadarg) {
                 break;
 
             case HTTP_BODY:     // In body
-                http_receive_response_body(conn);
+                // Receiving response body in a different thread. 
+                pthread_create(&thr_body, NULL, &body_thread, conn);
+                // TODO: timeout? 
+                pthread_join(thr_body, NULL);
+
+                /* TODO: do we actually need this?
                 double result = strtod(conn->buf, NULL);
                 if (result < 0) {
                     fprintf(stderr, "%.3f sec: server returned error: %s\n", elapsed(), http_truncate_response(conn));
                     exit(1);
                 }
+                */
                 break;
 
             case HTTP_BROKEN:   // Parse error
