@@ -283,7 +283,7 @@ void* pong_thread(void* threadarg) {
     // Copy thread arguments onto our stack.
     pong_args pa = *((pong_args*) threadarg);
 
-    int waitTime = 1;
+    int waitTime = 10;  // microseconds
     char url[256];
 
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
