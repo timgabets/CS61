@@ -26,7 +26,7 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 2
+#define MAXTHREADS 3
 
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
@@ -295,13 +295,13 @@ void* pong_thread(void* threadarg) {
     pthread_detach(pthread_self());
 
     // Copy thread arguments onto our stack.
-    pong_args pa = *((pong_args*) threadarg);
+    pong_args* pa = (pong_args*) threadarg;
 
     int waitServerTime = 10;  // microseconds
     char url[256];
     pthread_t thr_body;
 
-    snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
+    snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa -> x, pa -> y);
     http_connection* conn = http_connect(pong_addr);
     pthread_mutex_lock(&activeThread);
 
@@ -351,27 +351,25 @@ void* pong_thread(void* threadarg) {
                     }
                 }
                 // Phase 2 END
+            
                 pthread_join(thr_body, NULL);
                 break;
 
             case HTTP_BROKEN:   // Parse error
                 if(conn -> status_code == -1)
                 {
-		    pthread_mutex_lock(&positionMutex);
-                    printf("Server down. Waiting for %i microseconds\n", waitServerTime);
+                    pthread_mutex_lock(&positionMutex);
+                    //printf("Server down. Waiting for %i microseconds\n", waitServerTime);
                     usleep(waitServerTime);
                     waitServerTime *= 2;
                 
                     http_close(conn);
                     conn = http_connect(pong_addr);
-		    pthread_mutex_unlock(&positionMutex);
+                    pthread_mutex_unlock(&positionMutex);
                 }
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                //http_send_request(conn, url);
-                //break;
-
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 pthread_mutex_unlock(&activeThread);
@@ -475,7 +473,7 @@ int main(int argc, char** argv) {
     // managing pong threads:
     while (1)
     {
-        if(threadsNumber <= MAXTHREADS)
+        if(threadsNumber < MAXTHREADS)
         {
             pthread_create(&thr_pong[threadsNumber], NULL, pong_thread, &pa);
             threadsNumber++;
@@ -489,6 +487,7 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock(&mutex);
         threadsNumber--;
 
+        pthread_mutex_lock(&positionMutex);
         x += dx;
         y += dy;
         if (x < 0 || x >= width) {
@@ -500,7 +499,6 @@ int main(int argc, char** argv) {
             y += 2 * dy;
         }
         
-        pthread_mutex_lock(&positionMutex);
         pa.x = x;
         pa.y = y;
         pthread_mutex_unlock(&positionMutex);
