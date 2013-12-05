@@ -530,6 +530,22 @@ int main(int argc, char** argv) {
     // managing pong threads:
     while (1) 
     {
+        pthread_mutex_lock(&positionMutex);
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
+        
+        pa.x = x;
+        pa.y = y;
+        pthread_mutex_unlock(&positionMutex);
+        
         // checking free threads:
         for(int i = 0; i < MAXTHREADS; i++)
         {
@@ -546,22 +562,6 @@ int main(int argc, char** argv) {
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
         pthread_mutex_unlock(&mutex);
-
-        pthread_mutex_lock(&positionMutex);
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-        
-        pa.x = x;
-        pa.y = y;
-        pthread_mutex_unlock(&positionMutex);
 
         // wait 0.1sec
         usleep(100000);
