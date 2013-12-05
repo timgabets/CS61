@@ -364,15 +364,15 @@ void* pong_thread(void* thread_id) {
     char url[256];
     pthread_t thr_body;
 
-    snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
-    http_connection* conn = http_connect(pong_addr);
     pthread_mutex_lock(&activeThread);
+    http_connection* conn = http_connect(pong_addr);
 
     while(1)
     {
         switch(conn -> state)
         {
             case HTTP_REQUEST:
+                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
                 break;
 
@@ -407,15 +407,20 @@ void* pong_thread(void* thread_id) {
                         // This is too slow... use another thread. 
                         if (waitBodyTime > 50) 
                         {
+                            // BUG: Critical section could happen here:
+                            // we are still waiting for a thread to finish, and unlocking activeThread.
+                            // The next thread start running, and possibly can get into HTTP_BODY, and run another body_thread.
+                            //  In this case we could two body_threads, sharing *conn
                             pthread_mutex_unlock(&activeThread);
-                            pthread_cond_signal(&condvar);
+                            // this is the way how we could exit:
+                            conn -> state = HTTP_CLOSED;
                             break;
                         }
                     }
                 }
                 // Phase 2 END
-            
                 pthread_join(thr_body, NULL);
+
                 break;
 
             case HTTP_BROKEN:   // Parse error
@@ -437,9 +442,9 @@ void* pong_thread(void* thread_id) {
                 //break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
+                pthread_mutex_unlock(&activeThread);
                 http_close(conn);
                 *thr_id = 0;
-                pthread_mutex_unlock(&activeThread);
                 pthread_cond_signal(&condvar);
                 pthread_exit(NULL);
         }
