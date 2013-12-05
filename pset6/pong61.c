@@ -419,8 +419,8 @@ void* pong_thread(void* thread_id) {
                     }
                 }
                 // Phase 2 END
-                pthread_join(thr_body, NULL);
 
+                pthread_join(thr_body, NULL);
                 break;
 
             case HTTP_BROKEN:   // Parse error
@@ -504,7 +504,7 @@ int main(int argc, char** argv) {
                     conn->status_code, http_truncate_response(conn));
             exit(1);
         }
-        http_close(conn);
+        //http_close(conn);
     }
     // measure future times relative to this moment
     elapsed_base = timestamp();
@@ -530,22 +530,6 @@ int main(int argc, char** argv) {
     // managing pong threads:
     while (1) 
     {
-        pthread_mutex_lock(&positionMutex);
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-        
-        pa.x = x;
-        pa.y = y;
-        pthread_mutex_unlock(&positionMutex);
-        
         // checking free threads:
         for(int i = 0; i < MAXTHREADS; i++)
         {
@@ -563,7 +547,23 @@ int main(int argc, char** argv) {
         pthread_cond_wait(&condvar, &mutex);
         pthread_mutex_unlock(&mutex);
 
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
+
+        pthread_mutex_lock(&positionMutex);        
+        pa.x = x;
+        pa.y = y;
+
         // wait 0.1sec
         usleep(100000);
+        pthread_mutex_unlock(&positionMutex);
     }
 }
