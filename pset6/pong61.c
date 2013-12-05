@@ -287,7 +287,7 @@ void* body_thread(void* connection)
 
 
 /**
- * [pong_thread Connect to the server at the position indicated by `threadarg`
+ * [pongt_thread Connect to the server at the position indicated by `threadarg`
  *              (which is a pointer to a `pong_args` structure).]
  * @param threadarg [description]
  */
@@ -297,7 +297,7 @@ void* pong_thread(void* threadarg) {
     // Copy thread arguments onto our stack.
     pong_args pa = *((pong_args*) threadarg);
 
-    int waitTime = 10;  // microseconds
+    int waitServerTime = 10;  // microseconds
     char url[256];
     pthread_t thr_body;
 
@@ -324,29 +324,47 @@ void* pong_thread(void* threadarg) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-                // TODO: timeout? 
+		
+		// Phase 2 START
+		int waitBodyTime = 10;  // microseconds
+		// Loop until end of response body 
+		while(1) {
+		    if (conn->buf[conn->len] == 0) 
+		    {
+		        // We reached the end... continue.
+		        break;
+		    }
+		    else
+		    {
+		        // Body is still waitng for response wait with exponential backoff
+		        printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
+			usleep(waitBodyTime);
+			waitBodyTime *= 2;
+		        
+			// This is too slow... use another thread. 
+			if (waitBodyTime > 50) 
+			{
+			    pthread_mutex_unlock(&activeThread);
+			    pthread_cond_signal(&condvar);
+			    break;
+			}
+		    }
+		}
+		// Phase 2 END
                 pthread_join(thr_body, NULL);
-
-                /* TODO: do we actually need this?
-                double result = strtod(conn->buf, NULL);
-                if (result < 0) {
-                    fprintf(stderr, "%.3f sec: server returned error: %s\n", elapsed(), http_truncate_response(conn));
-                    exit(1);
-                }
-                */
-                break;
+		break;
 
             case HTTP_BROKEN:   // Parse error
                 if(conn -> status_code == -1)
                 {
-                    pthread_mutex_lock(&positionMutex);
-                    printf("Server down. Waiting for %i microseconds\n", waitTime);
-                    usleep(waitTime);
-                    waitTime *= 2;
+		    pthread_mutex_lock(&positionMutex);
+                    printf("Server down. Waiting for %i microseconds\n", waitServerTime);
+                    usleep(waitServerTime);
+                    waitServerTime *= 2;
                 
                     http_close(conn);
                     conn = http_connect(pong_addr);
-                    pthread_mutex_unlock(&positionMutex);
+		    pthread_mutex_unlock(&positionMutex);
                 }
                 break;
 
