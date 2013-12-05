@@ -325,34 +325,34 @@ void* pong_thread(void* threadarg) {
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
 		
-		// Phase 2 START
-		int waitBodyTime = 10;  // microseconds
-		// Loop until end of response body 
-		while(1) {
-		    if (conn->buf[conn->len] == 0) 
-		    {
-		        // We reached the end... continue.
-		        break;
-		    }
-		    else
-		    {
-		        // Body is still waitng for response wait with exponential backoff
-		        printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
-			usleep(waitBodyTime);
-			waitBodyTime *= 2;
-		        
-			// This is too slow... use another thread. 
-			if (waitBodyTime > 50) 
-			{
-			    pthread_mutex_unlock(&activeThread);
-			    pthread_cond_signal(&condvar);
-			    break;
-			}
-		    }
-		}
-		// Phase 2 END
+                // Phase 2 START
+                int waitBodyTime = 10;  // microseconds
+                // Loop until end of response body 
+                while(1) {
+                    if (conn->buf[conn->len] == 0) 
+                    {
+                        // We reached the end... continue.
+                        break;
+                    }
+                    else
+                    {
+                        // Body is still waitng for response wait with exponential backoff
+                        //printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
+                        usleep(waitBodyTime);
+                        waitBodyTime *= 2;
+	                           
+                        // This is too slow... use another thread. 
+                        if (waitBodyTime > 50) 
+                        {
+                            pthread_mutex_unlock(&activeThread);
+                            pthread_cond_signal(&condvar);
+                            break;
+                        }
+                    }
+                }
+                // Phase 2 END
                 pthread_join(thr_body, NULL);
-		break;
+                break;
 
             case HTTP_BROKEN:   // Parse error
                 if(conn -> status_code == -1)
