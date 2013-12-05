@@ -411,6 +411,7 @@ void* pong_thread(void* thread_id) {
                             // we are still waiting for a thread to finish, and unlocking activeThread.
                             // The next thread start running, and possibly can get into HTTP_BODY, and run another body_thread.
                             //  In this case we could two body_threads, sharing *conn
+                            //  TODO: when any delays happens, we should lock positionMutex too. 
                             pthread_mutex_unlock(&activeThread);
                             // this is the way how we could exit:
                             conn -> state = HTTP_CLOSED;
@@ -521,7 +522,7 @@ int main(int argc, char** argv) {
     pthread_cond_init(&condvar, NULL);
 
     // play game
-    int x = 1, y = 1, dx = 1, dy = 1;
+    int x = 0, y = 0, dx = 1, dy = 1;
     pa.x = x;
     pa.y = y;
     for(int i = 0; i < MAXTHREADS; i++)
