@@ -504,7 +504,7 @@ int main(int argc, char** argv) {
                     conn->status_code, http_truncate_response(conn));
             exit(1);
         }
-        //http_close(conn);
+        http_close(conn);
     }
     // measure future times relative to this moment
     elapsed_base = timestamp();
@@ -521,7 +521,7 @@ int main(int argc, char** argv) {
     pthread_cond_init(&condvar, NULL);
 
     // play game
-    int x = 0, y = 0, dx = 1, dy = 1;
+    int x = 1, y = 1, dx = 1, dy = 1;
     pa.x = x;
     pa.y = y;
     for(int i = 0; i < MAXTHREADS; i++)
