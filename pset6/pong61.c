@@ -43,12 +43,11 @@ typedef struct pong_args {
 
 pong_args pa;
 int width, height;      // board dimensions
+int x, y;
+int dx = 1,
+    dy = 1;
 
-pthread_mutex_t mutex;
-pthread_cond_t condvar;
 pthread_mutex_t activeThread;
-pthread_mutex_t positionMutex;
-pthread_cond_t positionCondVar;
 pthread_t thr_pong[MAXTHREADS];
 
 // TIME HELPERS
@@ -348,6 +347,28 @@ void* body_thread(void* connection)
     pthread_exit(NULL);
 }
 
+/**
+ * [update_position description]
+ */
+void update_position(void)
+{
+    x += dx;
+    y += dy;
+    if (x < 0 || x >= width) {
+        dx = -dx;
+        x += 2 * dx;
+    }
+    if (y < 0 || y >= height) {
+        dy = -dy;
+        y += 2 * dy;
+    }
+    
+    //pthread_mutex_lock(&positionMutex);        
+    pa.x = x;
+    pa.y = y;
+    usleep(100000);
+}
+
 
 /**
  * [pongt_thread Connect to the server at the position indicated by `threadarg`
@@ -436,12 +457,11 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
-                pthread_cond_signal(&condvar);
-                //pthread_mutex_unlock(&activeThread);
+                update_position();
+                pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
     }    
@@ -512,15 +532,11 @@ int main(int argc, char** argv) {
 
     // initialize global synchronization objects
     pthread_mutex_init(&activeThread, NULL);        // Locks the active thread
-    pthread_mutex_init(&mutex, NULL);               // 
-    pthread_cond_init(&condvar, NULL);              // Cond var, signaling that the posititon can be updated.
-    pthread_mutex_init(&positionMutex, NULL);
-    pthread_cond_init(&positionCondVar, NULL);
 
     // play game
-    int x = 0, y = 0, dx = 1, dy = 1;
-    pa.x = x;
-    pa.y = y;
+    //int x = 0, y = 0, dx = 1, dy = 1;
+    pa.x = 0;
+    pa.y = 0;
     for(int i = 0; i < MAXTHREADS; i++)
         thr_pong[i] = 0;
 
@@ -537,30 +553,7 @@ int main(int argc, char** argv) {
             }
         }
 
+        // TODO: do we need this?
         startTime = elapsed();
-
-        // wait until that thread signals us to continue
-        pthread_mutex_lock(&mutex);
-        pthread_cond_wait(&condvar, &mutex);
-        pthread_mutex_unlock(&mutex);
-
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-
-        //pthread_mutex_lock(&positionMutex);        
-        pa.x = x;
-        pa.y = y;
-        pthread_mutex_unlock(&activeThread);
-
-
-        //pthread_mutex_unlock(&positionMutex);
     }
 }
