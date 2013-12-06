@@ -26,7 +26,7 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 2
+#define MAXTHREADS 3
 
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
@@ -45,9 +45,10 @@ pong_args pa;
 int width, height;      // board dimensions
 
 pthread_mutex_t mutex;
-pthread_mutex_t positionMutex;
-pthread_mutex_t activeThread;
 pthread_cond_t condvar;
+pthread_mutex_t activeThread;
+pthread_mutex_t positionMutex;
+pthread_cond_t positionCondVar;
 pthread_t thr_pong[MAXTHREADS];
 
 // TIME HELPERS
@@ -66,7 +67,6 @@ double timestamp(void) {
 double elapsed(void) {
     return timestamp() - elapsed_base;
 }
-
 
 // HTTP CONNECTION MANAGEMENT
 
@@ -360,12 +360,11 @@ void* pong_thread(void* thread_id) {
     // Copy thread arguments onto our stack.
     pthread_t* thr_id = (pthread_t*) thread_id;
 
-    int waitServerTime = 10000;  // microseconds 
+    double waitServerTime = 10000;  // microseconds 
     char url[256];
     pthread_t thr_body;
 
     pthread_mutex_lock(&activeThread);
-    usleep(10000);
     http_connection* conn = http_connect(pong_addr);
 
     while(1)
@@ -374,6 +373,7 @@ void* pong_thread(void* thread_id) {
         {
             case HTTP_REQUEST:
                 snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
+                printf("%d thread does to x=%d y=%d\n", (unsigned int) pthread_self(), pa.x, pa.y);
                 http_send_request(conn, url);
                 break;
 
@@ -388,7 +388,7 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-        
+    /*    
                 // Phase 2 START
                 int waitBodyTime = 10000;  // microseconds
                 // Loop until end of response body 
@@ -421,33 +421,40 @@ void* pong_thread(void* thread_id) {
                     }
                 }
                 // Phase 2 END
-
+*/
                 pthread_join(thr_body, NULL);
                 break;
 
             case HTTP_BROKEN:   // Parse error
                 if(conn -> status_code == -1)
                 {
-                    pthread_mutex_lock(&positionMutex);
+                    //pthread_mutex_lock(&positionMutex);
                     //printf("Server down. Waiting for %i microseconds\n", waitServerTime);
                     usleep(waitServerTime);
                     waitServerTime *= 2;
                 
                     http_close(conn);
                     conn = http_connect(pong_addr);
-                    pthread_mutex_unlock(&positionMutex);
+                    //pthread_mutex_unlock(&positionMutex);
                 }
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                //conn -> state = HTTP_REQUEST;
-                //break;
+                pthread_cond_signal(&condvar);
+/*
+                pthread_mutex_lock(&positionMutex);
+                pthread_cond_wait(&positionCondVar, &positionMutex);
+                pthread_mutex_unlock(&positionMutex);
+*/
+                usleep(100);
+                conn -> state = HTTP_REQUEST;
+                break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
-                pthread_mutex_unlock(&activeThread);
                 http_close(conn);
                 *thr_id = 0;
                 pthread_cond_signal(&condvar);
+                pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
     }    
@@ -517,10 +524,11 @@ int main(int argc, char** argv) {
            nocheck ? " (NOCHECK mode)" : "");
 
     // initialize global synchronization objects
-    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&activeThread, NULL);        // Locks the active thread
+    pthread_mutex_init(&mutex, NULL);               // 
+    pthread_cond_init(&condvar, NULL);              // Cond var, signaling that the posititon can be updated.
     pthread_mutex_init(&positionMutex, NULL);
-    pthread_mutex_init(&activeThread, NULL);
-    pthread_cond_init(&condvar, NULL);
+    pthread_cond_init(&positionCondVar, NULL);
 
     // play game
     int x = 0, y = 0, dx = 1, dy = 1;
@@ -560,12 +568,12 @@ int main(int argc, char** argv) {
             y += 2 * dy;
         }
 
-        pthread_mutex_lock(&positionMutex);        
+        //pthread_mutex_lock(&positionMutex);        
         pa.x = x;
         pa.y = y;
+        pthread_cond_signal(&positionCondVar);
 
-        // wait 0.1sec
-        usleep(100000);
-        pthread_mutex_unlock(&positionMutex);
+
+        //pthread_mutex_unlock(&positionMutex);
     }
 }
