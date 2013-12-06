@@ -451,9 +451,9 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                conn -> state = HTTP_REQUEST;
-                update_position();
-                break;
+                //conn -> state = HTTP_REQUEST;
+                //update_position();
+                //break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
