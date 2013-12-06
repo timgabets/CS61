@@ -26,7 +26,7 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 3
+#define MAXTHREADS 1
 
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
@@ -360,7 +360,7 @@ void* pong_thread(void* thread_id) {
     // Copy thread arguments onto our stack.
     pthread_t* thr_id = (pthread_t*) thread_id;
 
-    int waitServerTime = 10;  // microseconds 
+    int waitServerTime = 1;  // microseconds 
     char url[256];
     pthread_t thr_body;
 
