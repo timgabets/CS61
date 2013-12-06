@@ -373,7 +373,6 @@ void* pong_thread(void* thread_id) {
         {
             case HTTP_REQUEST:
                 snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
-                printf("%d thread does to x=%d y=%d\n", (unsigned int) pthread_self(), pa.x, pa.y);
                 http_send_request(conn, url);
                 break;
 
@@ -428,33 +427,21 @@ void* pong_thread(void* thread_id) {
             case HTTP_BROKEN:   // Parse error
                 if(conn -> status_code == -1)
                 {
-                    //pthread_mutex_lock(&positionMutex);
-                    //printf("Server down. Waiting for %i microseconds\n", waitServerTime);
                     usleep(waitServerTime);
                     waitServerTime *= 2;
                 
                     http_close(conn);
                     conn = http_connect(pong_addr);
-                    //pthread_mutex_unlock(&positionMutex);
                 }
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                pthread_cond_signal(&condvar);
-/*
-                pthread_mutex_lock(&positionMutex);
-                pthread_cond_wait(&positionCondVar, &positionMutex);
-                pthread_mutex_unlock(&positionMutex);
-*/
-                usleep(100);
-                conn -> state = HTTP_REQUEST;
-                break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
                 pthread_cond_signal(&condvar);
-                pthread_mutex_unlock(&activeThread);
+                //pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
     }    
@@ -571,7 +558,7 @@ int main(int argc, char** argv) {
         //pthread_mutex_lock(&positionMutex);        
         pa.x = x;
         pa.y = y;
-        pthread_cond_signal(&positionCondVar);
+        pthread_mutex_unlock(&activeThread);
 
 
         //pthread_mutex_unlock(&positionMutex);
