@@ -36,12 +36,6 @@ static struct addrinfo* pong_addr;
 // Global variables
 double startTime;
 
-typedef struct pong_args {
-    int x;
-    int y;
-} pong_args;
-
-pong_args pa;
 int width, height;      // board dimensions
 int x, y;
 int dx = 1,
@@ -363,9 +357,6 @@ void update_position(void)
         y += 2 * dy;
     }
     
-    //pthread_mutex_lock(&positionMutex);        
-    pa.x = x;
-    pa.y = y;
     usleep(100000);
 }
 
@@ -393,7 +384,7 @@ void* pong_thread(void* thread_id) {
         switch(conn -> state)
         {
             case HTTP_REQUEST:
-                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
+                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", x, y);
                 http_send_request(conn, url);
                 break;
 
@@ -534,9 +525,8 @@ int main(int argc, char** argv) {
     pthread_mutex_init(&activeThread, NULL);        // Locks the active thread
 
     // play game
-    //int x = 0, y = 0, dx = 1, dy = 1;
-    pa.x = 0;
-    pa.y = 0;
+    x = 0;
+    y = 0;
     for(int i = 0; i < MAXTHREADS; i++)
         thr_pong[i] = 0;
 
@@ -552,8 +542,6 @@ int main(int argc, char** argv) {
                     thr_pong[i] = 0;
             }
         }
-
-        // TODO: do we need this?
-        startTime = elapsed();
     }
+    
 }
