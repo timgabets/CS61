@@ -363,7 +363,6 @@ void update_position(void)
         y += 2 * dy;
     }
     
-    //pthread_mutex_lock(&positionMutex);        
     pa.x = x;
     pa.y = y;
     usleep(100000);
@@ -457,6 +456,10 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
+                conn -> state = HTTP_REQUEST;
+                update_position();
+                break;
+
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
