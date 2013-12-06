@@ -365,6 +365,7 @@ void* pong_thread(void* thread_id) {
     pthread_t thr_body;
 
     pthread_mutex_lock(&activeThread);
+    usleep(10000);
     http_connection* conn = http_connect(pong_addr);
 
     while(1)
@@ -389,7 +390,7 @@ void* pong_thread(void* thread_id) {
                 pthread_create(&thr_body, NULL, &body_thread, conn);
         
                 // Phase 2 START
-                int waitBodyTime = 10;  // microseconds
+                int waitBodyTime = 10000;  // microseconds
                 // Loop until end of response body 
                 while(1) {
                     if (conn->buf[conn->len] == 0) 
