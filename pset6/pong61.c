@@ -36,8 +36,11 @@ static struct addrinfo* pong_addr;
 // Global variables
 double startTime;
 
-int width, height;      // board dimensions
+// board dimensions:
+int width, height; 
+// ball position:     
 int x, y;
+// ball step size:
 int dx = 1,
     dy = 1;
 
@@ -448,6 +451,10 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
+                conn -> state = HTTP_REQUEST;
+                update_position();
+                break;
+
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
@@ -525,7 +532,6 @@ int main(int argc, char** argv) {
     pthread_mutex_init(&activeThread, NULL);        // Locks the active thread
 
     // play game
-    //int x = 0, y = 0, dx = 1, dy = 1;
     x = 0;
     y = 0;
     for(int i = 0; i < MAXTHREADS; i++)
@@ -536,13 +542,10 @@ int main(int argc, char** argv) {
     {
         // checking free threads:
         for(int i = 0; i < MAXTHREADS; i++)
-        {
             if(thr_pong[i] == 0)
-            { 
                 if(pthread_create(&thr_pong[i], NULL, pong_thread, &thr_pong[i]) != 0 )
                     thr_pong[i] = 0;
-            }
-        }
+         
 
         // TODO: do we need this?
         startTime = elapsed();
