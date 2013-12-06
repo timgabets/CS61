@@ -33,12 +33,19 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
+<<<<<<< HEAD
 // Global variables
 double startTime;
 
 int width, height;      // board dimensions
+=======
+// board dimensions
+int width, height;
+// ball position
+>>>>>>> 741494fea056a0640a4005a06956252701cf524c
 int x, y;
-int dx = 1,
+// ball step size
+int dx = 1,           
     dy = 1;
 
 pthread_mutex_t activeThread;
@@ -399,7 +406,7 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-    /*    
+/*        
                 // Phase 2 START
                 int waitBodyTime = 10000;  // microseconds
                 // Loop until end of response body 
@@ -412,7 +419,7 @@ void* pong_thread(void* thread_id) {
                     else
                     {
                         // Body is still waitng for response wait with exponential backoff
-                        //printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
+                        // printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
                         usleep(waitBodyTime);
                         waitBodyTime *= 2;
                                
@@ -448,6 +455,10 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
+                conn -> state = HTTP_REQUEST;
+                update_position();
+                break;
+
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
@@ -527,6 +538,10 @@ int main(int argc, char** argv) {
     // play game
     x = 0;
     y = 0;
+<<<<<<< HEAD
+=======
+
+>>>>>>> 741494fea056a0640a4005a06956252701cf524c
     for(int i = 0; i < MAXTHREADS; i++)
         thr_pong[i] = 0;
 
@@ -535,13 +550,15 @@ int main(int argc, char** argv) {
     {
         // checking free threads:
         for(int i = 0; i < MAXTHREADS; i++)
-        {
-            if(thr_pong[i] == 0)
-            { 
+            if(thr_pong[i] == 0) 
                 if(pthread_create(&thr_pong[i], NULL, pong_thread, &thr_pong[i]) != 0 )
                     thr_pong[i] = 0;
+<<<<<<< HEAD
             }
         }
+=======
+        
+>>>>>>> 741494fea056a0640a4005a06956252701cf524c
     }
     
 }
