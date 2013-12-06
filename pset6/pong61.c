@@ -26,7 +26,7 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 1
+#define MAXTHREADS 2
 
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
