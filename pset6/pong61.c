@@ -33,13 +33,18 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
+// Global variables
+double startTime;
 
-// board dimensions
-int width, height;
-// ball position
+typedef struct pong_args {
+    int x;
+    int y;
+} pong_args;
+
+pong_args pa;
+int width, height;      // board dimensions
 int x, y;
-// ball step size
-int dx = 1,           
+int dx = 1,
     dy = 1;
 
 pthread_mutex_t activeThread;
@@ -358,6 +363,9 @@ void update_position(void)
         y += 2 * dy;
     }
     
+    //pthread_mutex_lock(&positionMutex);        
+    pa.x = x;
+    pa.y = y;
     usleep(100000);
 }
 
@@ -373,7 +381,7 @@ void* pong_thread(void* thread_id) {
     // Copy thread arguments onto our stack.
     pthread_t* thr_id = (pthread_t*) thread_id;
 
-    double waitServerTime = 1000;  // microseconds 
+    double waitServerTime = 10000;  // microseconds 
     char url[256];
     pthread_t thr_body;
 
@@ -385,7 +393,7 @@ void* pong_thread(void* thread_id) {
         switch(conn -> state)
         {
             case HTTP_REQUEST:
-                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", x, y);
+                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
                 break;
 
@@ -400,7 +408,7 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-/*        
+    /*    
                 // Phase 2 START
                 int waitBodyTime = 10000;  // microseconds
                 // Loop until end of response body 
@@ -413,7 +421,7 @@ void* pong_thread(void* thread_id) {
                     else
                     {
                         // Body is still waitng for response wait with exponential backoff
-                        // printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
+                        //printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
                         usleep(waitBodyTime);
                         waitBodyTime *= 2;
                                
@@ -449,10 +457,6 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                conn -> state = HTTP_REQUEST;
-                update_position();
-                break;
-
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
@@ -530,9 +534,9 @@ int main(int argc, char** argv) {
     pthread_mutex_init(&activeThread, NULL);        // Locks the active thread
 
     // play game
-    x = 0;
-    y = 0;
-
+    //int x = 0, y = 0, dx = 1, dy = 1;
+    pa.x = 0;
+    pa.y = 0;
     for(int i = 0; i < MAXTHREADS; i++)
         thr_pong[i] = 0;
 
@@ -541,10 +545,15 @@ int main(int argc, char** argv) {
     {
         // checking free threads:
         for(int i = 0; i < MAXTHREADS; i++)
-            if(thr_pong[i] == 0) 
+        {
+            if(thr_pong[i] == 0)
+            { 
                 if(pthread_create(&thr_pong[i], NULL, pong_thread, &thr_pong[i]) != 0 )
                     thr_pong[i] = 0;
-            
+            }
+        }
+
+        // TODO: do we need this?
+        startTime = elapsed();
     }
-    
 }
