@@ -33,16 +33,10 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
-<<<<<<< HEAD
-// Global variables
-double startTime;
 
-int width, height;      // board dimensions
-=======
 // board dimensions
 int width, height;
 // ball position
->>>>>>> 741494fea056a0640a4005a06956252701cf524c
 int x, y;
 // ball step size
 int dx = 1,           
@@ -538,10 +532,7 @@ int main(int argc, char** argv) {
     // play game
     x = 0;
     y = 0;
-<<<<<<< HEAD
-=======
 
->>>>>>> 741494fea056a0640a4005a06956252701cf524c
     for(int i = 0; i < MAXTHREADS; i++)
         thr_pong[i] = 0;
 
@@ -553,12 +544,7 @@ int main(int argc, char** argv) {
             if(thr_pong[i] == 0) 
                 if(pthread_create(&thr_pong[i], NULL, pong_thread, &thr_pong[i]) != 0 )
                     thr_pong[i] = 0;
-<<<<<<< HEAD
-            }
-        }
-=======
-        
->>>>>>> 741494fea056a0640a4005a06956252701cf524c
+            
     }
     
 }
