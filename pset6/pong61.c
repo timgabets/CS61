@@ -407,7 +407,7 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-    /*    
+        
                 // Phase 2 START
                 int waitBodyTime = 10000;  // microseconds
                 // Loop until end of response body 
@@ -420,7 +420,7 @@ void* pong_thread(void* thread_id) {
                     else
                     {
                         // Body is still waitng for response wait with exponential backoff
-                        //printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
+                        // printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
                         usleep(waitBodyTime);
                         waitBodyTime *= 2;
                                
@@ -440,7 +440,7 @@ void* pong_thread(void* thread_id) {
                     }
                 }
                 // Phase 2 END
-*/
+
                 pthread_join(thr_body, NULL);
                 break;
 
