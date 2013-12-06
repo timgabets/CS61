@@ -373,7 +373,7 @@ void* pong_thread(void* thread_id) {
     // Copy thread arguments onto our stack.
     pthread_t* thr_id = (pthread_t*) thread_id;
 
-    double waitServerTime = 10000;  // microseconds 
+    double waitServerTime = 1000;  // microseconds 
     char url[256];
     pthread_t thr_body;
 
