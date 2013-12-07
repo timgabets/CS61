@@ -382,14 +382,15 @@ void* pong_thread(void* threadarg) {
 	http_send_request(conn, url);
 	http_receive_response_headers(conn);
 
-	// Phase 5 code
-	if (conn->len > 100) {
-	  break;
-	}
+	
         if (conn->status_code == 200)
         {
 	    skip = 1;
 	    pthread_cond_signal(&condvar);
+	    // Phase 5 code
+	    if ((int)conn->len > 100) {
+	      break;
+	    }
 	    http_receive_response_body(conn);
 	
 	    int result = strncmp("0 OK", conn -> buf, 4);
