@@ -406,7 +406,7 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-/*
+
                 while(1)
                 {
                     bodyTime = elapsed();
@@ -429,7 +429,7 @@ void* pong_thread(void* thread_id) {
                         //break;
                     }
                 }
-*/                
+             
                 pthread_join(thr_body, NULL);
                 printf("body at %f\n", elapsed());
                 break;
