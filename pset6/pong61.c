@@ -376,6 +376,9 @@ void* pong_thread(void* thread_id) {
     pthread_t* thr_id = (pthread_t*) thread_id;
 
     double waitServerTime = 10000;  // microseconds 
+    double waitForBody = 0.2;       // seconds
+    double headersTime = elapsed();
+    double bodyTime;
     char url[256];
     pthread_t thr_body;
 
@@ -393,6 +396,7 @@ void* pong_thread(void* thread_id) {
 
             case HTTP_INITIAL:      // Before first line of response
                 http_receive_response_headers(conn);
+                headersTime = elapsed();
                 break;
 
             case HTTP_HEADERS:      // After first line of response, in headers
@@ -402,41 +406,32 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-    /*    
-                // Phase 2 START
-                int waitBodyTime = 10000;  // microseconds
-                // Loop until end of response body 
-                while(1) {
-                    if (conn->buf[conn->len] == 0) 
+/*
+                while(1)
+                {
+                    bodyTime = elapsed();
+                    if(bodyTime > headersTime + waitForBody)
                     {
-                        // We reached the end... continue.
-                        break;
+                        // checking the body:
+                        if( strncmp("0 OK", conn -> buf, 4) == 0 )  
+                        {
+                            // body read
+                            pthread_join(thr_body, NULL);
+                            break;
+                        }else
+                             usleep(10000);      // 0.01 seconds
                     }
                     else
                     {
-                        // Body is still waitng for response wait with exponential backoff
-                        //printf("Body response slow. Waiting for %i microseconds\n", waitBodyTime);
-                        usleep(waitBodyTime);
-                        waitBodyTime *= 2;
-                               
-                        // This is too slow... use another thread. 
-                        if (waitBodyTime > 50) 
-                        {
-                            // BUG: Critical section could happen here:
-                            // we are still waiting for a thread to finish, and unlocking activeThread.
-                            // The next thread start running, and possibly can get into HTTP_BODY, and run another body_thread.
-                            //  In this case we could two body_threads, sharing *conn
-                            //  TODO: when any delays happens, we should lock positionMutex too. 
-                            pthread_mutex_unlock(&activeThread);
-                            // this is the way how we could exit:
-                            conn -> state = HTTP_CLOSED;
-                            break;
-                        }
+                        usleep(10000);
+                        // time has run out. 
+                        //pthread_cancel(thr_body);
+                        //break;
                     }
                 }
-                // Phase 2 END
-*/
+                */
                 pthread_join(thr_body, NULL);
+                printf("body at %f\n", elapsed());
                 break;
 
             case HTTP_BROKEN:   // Parse error
@@ -451,15 +446,15 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                //conn -> state = HTTP_REQUEST;
-                //update_position();
-                //break;
+                conn -> state = HTTP_REQUEST;
+                update_position();
+                break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
+                pthread_mutex_unlock(&activeThread);
                 http_close(conn);
                 *thr_id = 0;
                 update_position();
-                pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
     }    
