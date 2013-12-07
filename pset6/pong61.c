@@ -192,10 +192,10 @@ void http_receive_response_headers(http_connection* conn) {
     // read & parse data until told `http_process_response_headers`
     // tells us to stop
     while (http_process_response_headers(conn)) {
-      // Phase 5 code
-      if (conn->len != 0) {
-	return;
-      }
+      // Phase 5 start
+      if ( conn->len != 0) {
+	conn->len = 0;
+      } // Phase 5 end
         ssize_t nr = read(conn->fd, &conn->buf[conn->len], BUFSIZ);
         if (nr == 0)
             conn->eof = 1;
@@ -387,13 +387,8 @@ void* pong_thread(void* threadarg) {
         {
 	    skip = 1;
 	    pthread_cond_signal(&condvar);
-	    // Phase 5 code
-	    if ((int)conn->len < 100) {
-	      http_receive_response_body(conn);
-	      //break;
-	    }
-	    //http_receive_response_body(conn);
-	
+	    http_receive_response_body(conn);
+	   
 	    int result = strncmp("0 OK", conn -> buf, 4);
 	    if( result != 0 )
 	    {
