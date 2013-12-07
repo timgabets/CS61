@@ -429,7 +429,7 @@ void* pong_thread(void* thread_id) {
                         //break;
                     }
                 }
-                */
+*/                
                 pthread_join(thr_body, NULL);
                 printf("body at %f\n", elapsed());
                 break;
@@ -451,10 +451,10 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
-                pthread_mutex_unlock(&activeThread);
                 http_close(conn);
                 *thr_id = 0;
                 update_position();
+                pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
     }    
@@ -542,6 +542,7 @@ int main(int argc, char** argv) {
                     thr_pong[i] = 0;
          
 
+        usleep(100000);
         // TODO: do we need this?
         startTime = elapsed();
     }
