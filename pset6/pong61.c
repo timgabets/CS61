@@ -388,10 +388,11 @@ void* pong_thread(void* threadarg) {
 	    skip = 1;
 	    pthread_cond_signal(&condvar);
 	    // Phase 5 code
-	    if ((int)conn->len > 100) {
-	      break;
+	    if ((int)conn->len < 100) {
+	      http_receive_response_body(conn);
+	      //break;
 	    }
-	    http_receive_response_body(conn);
+	    //http_receive_response_body(conn);
 	
 	    int result = strncmp("0 OK", conn -> buf, 4);
 	    if( result != 0 )
