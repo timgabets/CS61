@@ -406,7 +406,7 @@ void* pong_thread(void* thread_id) {
             case HTTP_BODY:     // In body
                 // Receiving response body in a different thread. 
                 pthread_create(&thr_body, NULL, &body_thread, conn);
-
+/*
                 while(1)
                 {
                     bodyTime = elapsed();
@@ -423,13 +423,18 @@ void* pong_thread(void* thread_id) {
                     }
                     else
                     {
-                        usleep(10000);
-                        // time has run out. 
-                        //pthread_cancel(thr_body);
-                        //break;
+                        //time has run out. 
+                        pthread_cancel(thr_body);
+                        // making thread inactive:
+                        pthread_mutex_unlock(&activeThread);
+                        // we shouldn't close the connection, so, just waiting
+                        sleep(3);
+                        // marking connection closed
+                        conn -> state = HTTP_CLOSED;
+                        break;
                     }
                 }
-             
+*/             
                 pthread_join(thr_body, NULL);
                 printf("body at %f\n", elapsed());
                 break;
