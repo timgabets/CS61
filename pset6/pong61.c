@@ -26,12 +26,17 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 3
-
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
+
+typedef struct pong_args{
+    int x;
+    int y;
+}pong_args;
+
+pong_args pa;
 
 // Global variables
 double startTime;
@@ -44,8 +49,8 @@ int x, y;
 int dx = 1,
     dy = 1;
 
-pthread_mutex_t activeThread;
-pthread_t thr_pong[MAXTHREADS];
+pthread_mutex_t mutex;
+pthread_cond_t  condvar;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -331,26 +336,40 @@ static int http_check_response_body(http_connection* conn) {
 }
 
 
+/**
+ * [update_position description]
+ * @param unused [description]
+ */
+void update_position(void)
+{
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
+
+        pa.x = x;
+        pa.y = y;
+
+        usleep(100000);    
+}
 
 /**
  * [pongt_thread Connect to the server at the position indicated by `threadarg`
  *              (which is a pointer to a `pong_args` structure).]
  * @param thread_id [description]
  */
-void* pong_thread(void* thread_id) {
+void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
 
-    // Copy thread arguments onto our stack.
-    pthread_t* thr_id = (pthread_t*) thread_id;
-
     double waitServerTime = 10000;  // microseconds 
-    double waitForBody = 0.2;       // seconds
-    double headersTime = elapsed();
-    double bodyTime;
     char url[256];
-    pthread_t thr_body;
 
-    pthread_mutex_lock(&activeThread);
     http_connection* conn = http_connect(pong_addr);
 
     while(1)
@@ -358,13 +377,12 @@ void* pong_thread(void* thread_id) {
         switch(conn -> state)
         {
             case HTTP_REQUEST:
-                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", x, y);
+                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
                 break;
 
             case HTTP_INITIAL:      // Before first line of response
                 http_receive_response_headers(conn);
-                headersTime = elapsed();
                 break;
 
             case HTTP_HEADERS:      // After first line of response, in headers
@@ -372,9 +390,8 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_BODY:     // In body
-                //
+                pthread_cond_signal(&condvar);
                 http_receive_response_body(conn);
-                printf("body at %f\n", elapsed());
                 break;
 
             case HTTP_BROKEN:   // Parse error
@@ -389,15 +406,11 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                conn -> state = HTTP_REQUEST;
-                //update_position();
-                break;
+                //conn -> state = HTTP_REQUEST;
+                //break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
-                *thr_id = 0;
-                //update_position();
-                pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
     }    
@@ -467,37 +480,30 @@ int main(int argc, char** argv) {
            nocheck ? " (NOCHECK mode)" : "");
 
     // initialize global synchronization objects
-    pthread_mutex_init(&activeThread, NULL);        // Locks the active thread
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&condvar, NULL);
 
     // play game
     x = 0;
     y = 0;
-    for(int i = 0; i < MAXTHREADS; i++)
-        thr_pong[i] = 0;
+    pa.x = x;
+    pa.y = y;
 
     // managing pong threads:
     while (1) 
     {
-        // checking free threads:
-        for(int i = 0; i < MAXTHREADS; i++)
-            if(thr_pong[i] == 0)
-                if(pthread_create(&thr_pong[i], NULL, pong_thread, &thr_pong[i]) != 0 )
-                    thr_pong[i] = 0;
+        pthread_t pt;
+        pthread_create(&pt, NULL, pong_thread, &pa);
          
         // TODO: do we need this?
         startTime = elapsed();
 
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-        
-        usleep(100000);
+        pthread_mutex_lock(&mutex);
+        pthread_cond_wait(&condvar, &mutex);
+        pthread_mutex_unlock(&mutex);
+
+        update_position();
     }
 }
+
+
