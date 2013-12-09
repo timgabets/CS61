@@ -331,38 +331,6 @@ static int http_check_response_body(http_connection* conn) {
 }
 
 
-/**
- * [body_thread provides receiving response body. While receiving, the 'parent' thread
- *                       is counting time. Implemented for Phase2]
- * @param unused [unused]
- */
-void* body_thread(void* connection)
-{
-    http_connection* conn = (http_connection*) connection;
-
-    http_receive_response_body(conn);
-    pthread_exit(NULL);
-}
-
-/**
- * [update_position description]
- */
-void update_position(void)
-{
-    x += dx;
-    y += dy;
-    if (x < 0 || x >= width) {
-        dx = -dx;
-        x += 2 * dx;
-    }
-    if (y < 0 || y >= height) {
-        dy = -dy;
-        y += 2 * dy;
-    }
-    
-    usleep(100000);
-}
-
 
 /**
  * [pongt_thread Connect to the server at the position indicated by `threadarg`
@@ -404,38 +372,8 @@ void* pong_thread(void* thread_id) {
                 break;
 
             case HTTP_BODY:     // In body
-                // Receiving response body in a different thread. 
-                pthread_create(&thr_body, NULL, &body_thread, conn);
-/*
-                while(1)
-                {
-                    bodyTime = elapsed();
-                    if(bodyTime > headersTime + waitForBody)
-                    {
-                        // checking the body:
-                        if( strncmp("0 OK", conn -> buf, 4) == 0 )  
-                        {
-                            // body read
-                            pthread_join(thr_body, NULL);
-                            break;
-                        }else
-                             usleep(10000);      // 0.01 seconds
-                    }
-                    else
-                    {
-                        //time has run out. 
-                        pthread_cancel(thr_body);
-                        // making thread inactive:
-                        pthread_mutex_unlock(&activeThread);
-                        // we shouldn't close the connection, so, just waiting
-                        sleep(3);
-                        // marking connection closed
-                        conn -> state = HTTP_CLOSED;
-                        break;
-                    }
-                }
-*/             
-                pthread_join(thr_body, NULL);
+                //
+                http_receive_response_body(conn);
                 printf("body at %f\n", elapsed());
                 break;
 
@@ -452,13 +390,13 @@ void* pong_thread(void* thread_id) {
 
             case HTTP_DONE:     // Body complete, available for a new request
                 conn -> state = HTTP_REQUEST;
-                update_position();
+                //update_position();
                 break;
 
             case HTTP_CLOSED:   // Body complete, connection closed
                 http_close(conn);
                 *thr_id = 0;
-                update_position();
+                //update_position();
                 pthread_mutex_unlock(&activeThread);
                 pthread_exit(NULL);
         }
@@ -546,9 +484,20 @@ int main(int argc, char** argv) {
                 if(pthread_create(&thr_pong[i], NULL, pong_thread, &thr_pong[i]) != 0 )
                     thr_pong[i] = 0;
          
-
-        usleep(100000);
         // TODO: do we need this?
         startTime = elapsed();
+
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
+        
+        usleep(100000);
     }
 }
