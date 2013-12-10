@@ -88,6 +88,16 @@ struct http_connection {
     struct http_connection *next;
 };
 
+
+// linked list of active connections:
+typedef struct connections_list{
+    pthread_t   owner;
+    http_connection* conn;
+    struct connections_list* next;
+}connections_list;
+
+connections_list* head = NULL;
+
 // `http_connection::state` constants
 #define HTTP_REQUEST 0      // Request not sent yet
 #define HTTP_INITIAL 1      // Before first line of response
@@ -337,6 +347,61 @@ static int http_check_response_body(http_connection* conn) {
 
 
 /**
+ * [add_active_connection description]
+ * @param conn [description]
+ */
+void add_active_connection(http_connection* conn, pthread_t owner)
+{
+    if(head == NULL)
+    {
+        head = malloc( sizeof(connections_list) );
+        head -> owner = owner;
+        head -> conn = conn;
+        head -> next = NULL;
+    }else
+    {
+        connections_list* temp = head;
+        while(temp -> next != NULL)
+        {
+            temp = temp -> next;
+        }
+
+        if(temp -> next == NULL)
+        {
+            connections_list* tail = malloc(sizeof(connections_list));
+            tail -> conn = conn;
+            tail -> next = NULL;
+        }
+    }
+}
+
+/**
+ * [check_existing_connection description]
+ * @return  [description]
+ */
+http_connection* check_existing_connection(pthread_t owner)
+{
+    if(head == NULL)
+    {
+        return NULL;
+    }else
+    {
+        connections_list* temp = head;
+        while(temp -> next != NULL)
+        {
+            if(temp -> owner == owner)
+                return temp -> conn;
+
+            temp = temp -> next;
+        }
+
+        // nothing found 
+        return NULL;
+    }
+}
+
+
+/**
  * [update_position description]
  * @param unused [description]
  */
@@ -426,6 +491,7 @@ void* pong_thread(void* unused) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
+                //add_active_connection(conn, pthread_self());
                 //conn -> state = HTTP_REQUEST;
                 //break;
 
