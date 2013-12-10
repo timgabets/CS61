@@ -6,7 +6,6 @@
  * and low utilization. It will also teach you programming using threads. 
  * The setting is a game called network pong.
  * 
- * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
  * 
  * November-December 2013
@@ -50,6 +49,7 @@ int dx = 1,
     dy = 1;
 
 pthread_mutex_t mutex;
+pthread_mutex_t keepSilence;
 pthread_cond_t  condvar;
 
 // TIME HELPERS
@@ -367,7 +367,7 @@ void update_position(void)
 void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
 
-    double waitServerTime = 10000;  // microseconds 
+    double waitTime = 10000;  // microseconds 
     char url[256];
 
     http_connection* conn = http_connect(pong_addr);
@@ -377,8 +377,10 @@ void* pong_thread(void* unused) {
         switch(conn -> state)
         {
             case HTTP_REQUEST:
+                pthread_mutex_lock(&keepSilence);
                 snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
+                pthread_mutex_unlock(&keepSilence);
                 break;
 
             case HTTP_INITIAL:      // Before first line of response
@@ -392,17 +394,35 @@ void* pong_thread(void* unused) {
             case HTTP_BODY:     // In body
                 pthread_cond_signal(&condvar);
                 http_receive_response_body(conn);
+                // Phase4
+                if( conn -> buf[0] == '+')
+                {
+                    pthread_mutex_lock(&keepSilence);
+                    char* waitTimeString = &(conn -> buf[1]);
+                    int i = 0;
+                    while(waitTimeString[i] != ' ')
+                        i++;
+
+                    waitTimeString[i] = '\0';
+                    waitTime = atoi(waitTimeString);    // microseconds
+                    
+                    usleep(waitTime * 1000);            // milliseconds
+                    pthread_mutex_unlock(&keepSilence);
+                }
+                // End of Phase4
                 break;
 
             case HTTP_BROKEN:   // Parse error
+                // Phase1
                 if(conn -> status_code == -1)
                 {
-                    usleep(waitServerTime);
-                    waitServerTime *= 2;
+                    usleep(waitTime);
+                    waitTime *= 2;
                 
                     http_close(conn);
                     conn = http_connect(pong_addr);
                 }
+                // End of Phase1
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
@@ -481,6 +501,7 @@ int main(int argc, char** argv) {
 
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&keepSilence, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
