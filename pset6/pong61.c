@@ -88,15 +88,8 @@ struct http_connection {
     struct http_connection *next;
 };
 
-
-// linked list of active connections:
-typedef struct connections_list{
-    pthread_t   owner;
-    http_connection* conn;
-    struct connections_list* next;
-}connections_list;
-
-connections_list* head = NULL;
+// head of linked list of active connections:
+http_connection* head = NULL;
 
 // `http_connection::state` constants
 #define HTTP_REQUEST 0      // Request not sent yet
@@ -106,6 +99,7 @@ connections_list* head = NULL;
 #define HTTP_DONE    (-1)   // Body complete, available for a new request
 #define HTTP_CLOSED  (-2)   // Body complete, connection closed
 #define HTTP_BROKEN  (-3)   // Parse error
+#define HTTP_BLOCKED (-4)   // Connection shouldn't be used
 
 // helper functions
 char* http_truncate_response(http_connection* conn);
@@ -347,20 +341,20 @@ static int http_check_response_body(http_connection* conn) {
 
 
 /**
- * [add_active_connection description]
- * @param conn [description]
+ * [add_connection description]
+ * @param  pong_addr [description]
+ * @return           [description]
  */
-void add_active_connection(http_connection* conn, pthread_t owner)
+http_connection* add_connection(struct addrinfo* pong_addr)
 {
     if(head == NULL)
     {
-        head = malloc( sizeof(connections_list) );
-        head -> owner = owner;
-        head -> conn = conn;
+        head = http_connect(pong_addr);
         head -> next = NULL;
+        return head;
     }else
     {
-        connections_list* temp = head;
+        http_connection* temp = head;
         while(temp -> next != NULL)
         {
             temp = temp -> next;
@@ -368,30 +362,45 @@ void add_active_connection(http_connection* conn, pthread_t owner)
 
         if(temp -> next == NULL)
         {
-            connections_list* tail = malloc(sizeof(connections_list));
-            tail -> conn = conn;
+            http_connection* tail = http_connect(pong_addr);
             tail -> next = NULL;
+            return tail;
         }
+
+        return NULL;
     }
 }
 
+
 /**
- * [check_existing_connection description]
+ * [check_avail_connection description]
  * @return  [description]
  */
-http_connection* check_existing_connection(pthread_t owner)
+http_connection* check_avail_connection(void)
 {
     if(head == NULL)
     {
         return NULL;
     }else
     {
-        connections_list* temp = head;
+        http_connection* temp = head;
         while(temp -> next != NULL)
         {
-            if(temp -> owner == owner)
-                return temp -> conn;
-
+            switch(temp -> state)
+            {
+                case HTTP_REQUEST :
+                case HTTP_INITIAL :
+                case HTTP_HEADERS :
+                case HTTP_BODY    :
+                case HTTP_DONE    :
+                    return temp;
+                case HTTP_CLOSED  :
+                case HTTP_BROKEN  :
+                case HTTP_BLOCKED :
+                default:
+                    break;
+            }
+            
             temp = temp -> next;
         }
 
@@ -432,17 +441,21 @@ void update_position(void)
 void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
 
+    http_connection* conn;
     double waitTime = 10000;  // microseconds 
     char url[256];
 
-    http_connection* conn = http_connect(pong_addr);
+    pthread_mutex_lock(&keepSilence);
+
+    conn = check_avail_connection();
+    if(conn == NULL)
+        conn = add_connection(pong_addr);
 
     while(1)
     {
         switch(conn -> state)
         {
             case HTTP_REQUEST:
-                pthread_mutex_lock(&keepSilence);
                 snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
                 pthread_mutex_unlock(&keepSilence);
@@ -491,12 +504,8 @@ void* pong_thread(void* unused) {
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
-                //add_active_connection(conn, pthread_self());
-                //conn -> state = HTTP_REQUEST;
-                //break;
-
             case HTTP_CLOSED:   // Body complete, connection closed
-                http_close(conn);
+                //http_close(conn);
                 pthread_exit(NULL);
         }
     }    
