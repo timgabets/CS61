@@ -411,6 +411,41 @@ http_connection* check_avail_connection(void)
 
 
 /**
+ * [clean_connections description]
+ */
+void clean_connections(void)
+{
+    if(head != NULL)
+    {
+        http_connection* temp = head;
+        http_connection* prev = head;
+        while(temp -> next != NULL)
+        {
+            switch(temp -> state)
+            {
+                case HTTP_REQUEST :
+                case HTTP_INITIAL :
+                case HTTP_HEADERS :
+                case HTTP_BODY    :
+                case HTTP_DONE    :
+                case HTTP_BROKEN  :
+                    break;
+                case HTTP_CLOSED  :
+                {
+                    http_close(temp);
+                    prev -> next = temp -> next;
+                }
+                default:
+                    break;
+            }
+            
+            prev = temp;
+            temp = temp -> next;
+        }
+    }
+}
+
+/**
  * [update_position description]
  * @param unused [description]
  */
@@ -599,5 +634,8 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock(&mutex);
 
         update_position();
+
+        // TODO: thread that removes unused connections:
+        clean_connections();
     }
 }
