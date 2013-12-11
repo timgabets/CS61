@@ -25,6 +25,9 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
+#define MAXTHREADS 8
+int threadsCount = 0;
+
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
@@ -48,8 +51,9 @@ int x, y;
 int dx = 1,
     dy = 1;
 
-pthread_mutex_t mutex;
+pthread_mutex_t threadsCountMutex;
 pthread_mutex_t keepSilence;
+pthread_mutex_t mutex;
 pthread_cond_t  condvar;
 
 // TIME HELPERS
@@ -99,7 +103,7 @@ http_connection* head = NULL;
 #define HTTP_DONE    (-1)   // Body complete, available for a new request
 #define HTTP_CLOSED  (-2)   // Body complete, connection closed
 #define HTTP_BROKEN  (-3)   // Parse error
-#define HTTP_BLOCKED (-4)   // Connection shouldn't be used
+//#define HTTP_BLOCKED (-4)   // Connection shouldn't be used
 
 // helper functions
 char* http_truncate_response(http_connection* conn);
@@ -350,7 +354,6 @@ http_connection* add_connection(struct addrinfo* pong_addr)
     if(head == NULL)
     {
         head = http_connect(pong_addr);
-        head -> next = NULL;
         return head;
     }else
     {
@@ -363,7 +366,7 @@ http_connection* add_connection(struct addrinfo* pong_addr)
         if(temp -> next == NULL)
         {
             http_connection* tail = http_connect(pong_addr);
-            tail -> next = NULL;
+            temp -> next = tail;
             return tail;
         }
 
@@ -384,7 +387,7 @@ http_connection* check_avail_connection(void)
     }else
     {
         http_connection* temp = head;
-        while(temp -> next != NULL)
+        while(temp != NULL)
         {
             switch(temp -> state)
             {
@@ -396,7 +399,6 @@ http_connection* check_avail_connection(void)
                     return temp;
                 case HTTP_CLOSED  :
                 case HTTP_BROKEN  :
-                case HTTP_BLOCKED :
                 default:
                     break;
             }
@@ -420,7 +422,7 @@ void* clean_connections(void* unused)
     {
         http_connection* temp = head;
         http_connection* prev = head;
-        while(temp -> next != NULL)
+        while(temp != NULL)
         {
             switch(temp -> state)
             {
@@ -483,10 +485,12 @@ void* pong_thread(void* unused) {
     char url[256];
 
     pthread_mutex_lock(&keepSilence);
-
+    
     conn = check_avail_connection();
     if(conn == NULL)
         conn = add_connection(pong_addr);
+    
+   //conn = http_connect(pong_addr);
 
     while(1)
     {
@@ -495,7 +499,7 @@ void* pong_thread(void* unused) {
             case HTTP_REQUEST:
                 snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
-                pthread_mutex_unlock(&keepSilence);
+ 
                 break;
 
             case HTTP_INITIAL:      // Before first line of response
@@ -507,6 +511,7 @@ void* pong_thread(void* unused) {
                 break;
 
             case HTTP_BODY:     // In body
+                pthread_mutex_unlock(&keepSilence);
                 pthread_cond_signal(&condvar);
                 http_receive_response_body(conn);
                 // Phase4
@@ -534,6 +539,7 @@ void* pong_thread(void* unused) {
                     usleep(waitTime);
                     waitTime *= 2;
                 
+                    // FIXME:
                     http_close(conn);
                     conn = http_connect(pong_addr);
                 }
@@ -542,7 +548,11 @@ void* pong_thread(void* unused) {
 
             case HTTP_DONE:     // Body complete, available for a new request
             case HTTP_CLOSED:   // Body complete, connection closed
-                //http_close(conn);
+                /*http_close(conn);
+                pthread_mutex_lock(&threadsCountMutex);
+                --threadsCount;
+                pthread_mutex_lock(&threadsCountMutex);
+                */
                 pthread_exit(NULL);
         }
     }    
@@ -614,6 +624,7 @@ int main(int argc, char** argv) {
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&keepSilence, NULL);
+    pthread_mutex_init(&threadsCountMutex, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
@@ -625,9 +636,20 @@ int main(int argc, char** argv) {
     // managing pong threads:
     while (1) 
     {
+        /*
+        pthread_t thr_pong[MAXTHREADS];
+        if(threadsCount < MAXTHREADS)
+        {
+            pthread_create(&thr_pong[threadsCount], NULL, pong_thread, &pa);
+            pthread_mutex_lock(&threadsCountMutex);
+            threadsCount++;
+            pthread_mutex_unlock(&threadsCountMutex);
+        }
+        */
         pthread_t thr_pong;
         pthread_create(&thr_pong, NULL, pong_thread, &pa);
-         
+        
+
         // TODO: do we need this?
         startTime = elapsed();
 
