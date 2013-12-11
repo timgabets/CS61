@@ -413,8 +413,9 @@ http_connection* check_avail_connection(void)
 /**
  * [clean_connections description]
  */
-void clean_connections(void)
+void* clean_connections(void* unused)
 {
+    pthread_detach(pthread_self());
     if(head != NULL)
     {
         http_connection* temp = head;
@@ -443,6 +444,7 @@ void clean_connections(void)
             temp = temp -> next;
         }
     }
+    pthread_exit(NULL);
 }
 
 /**
@@ -623,12 +625,13 @@ int main(int argc, char** argv) {
     // managing pong threads:
     while (1) 
     {
-        pthread_t pt;
-        pthread_create(&pt, NULL, pong_thread, &pa);
+        pthread_t thr_pong;
+        pthread_create(&thr_pong, NULL, pong_thread, &pa);
          
         // TODO: do we need this?
         startTime = elapsed();
 
+        // waiting for a signal from thread to finish with current position
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
         pthread_mutex_unlock(&mutex);
@@ -636,6 +639,7 @@ int main(int argc, char** argv) {
         update_position();
 
         // TODO: thread that removes unused connections:
-        clean_connections();
+        pthread_t thr_clean;
+        pthread_create(&thr_clean, NULL, clean_connections, NULL);
     }
 }
