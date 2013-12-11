@@ -89,7 +89,8 @@ struct http_connection {
 
     char buf[BUFSIZ];       // Response buffer
     size_t len;             // Length of response buffer
-    struct http_connection *next;
+    pthread_t owner;                // thread operating with this connection
+    struct http_connection *next;   // next element in hte linked list
 };
 
 // head of linked list of active connections:
@@ -349,28 +350,22 @@ static int http_check_response_body(http_connection* conn) {
  * @param  pong_addr [description]
  * @return           [description]
  */
-http_connection* add_connection(struct addrinfo* pong_addr)
+void add_connection(http_connection* conn)
 {
     if(head == NULL)
     {
-        head = http_connect(pong_addr);
-        return head;
+        head = conn;
     }else
     {
         http_connection* temp = head;
         while(temp -> next != NULL)
-        {
             temp = temp -> next;
-        }
-
+        
         if(temp -> next == NULL)
         {
-            http_connection* tail = http_connect(pong_addr);
+            http_connection* tail = conn;
             temp -> next = tail;
-            return tail;
         }
-
-        return NULL;
     }
 }
 
@@ -389,19 +384,8 @@ http_connection* check_avail_connection(void)
         http_connection* temp = head;
         while(temp != NULL)
         {
-            switch(temp -> state)
-            {
-                case HTTP_REQUEST :
-                case HTTP_INITIAL :
-                case HTTP_HEADERS :
-                case HTTP_BODY    :
-                case HTTP_DONE    :
-                    return temp;
-                case HTTP_CLOSED  :
-                case HTTP_BROKEN  :
-                default:
-                    break;
-            }
+            if(temp -> owner == 0)
+                return temp;
             
             temp = temp -> next;
         }
@@ -472,6 +456,25 @@ void update_position(void)
         usleep(100000);    
 }
 
+
+void drop_connection(http_connection* conn)
+{
+    http_connection* temp = head;
+    while(temp != NULL)
+    {
+        // removing from list
+        if(temp -> next == conn)
+        {
+            temp -> next = conn -> next;
+            http_close(conn);
+        }
+
+        temp = temp -> next;
+    }
+
+}
+
+
 /**
  * [pongt_thread Connect to the server at the position indicated by `threadarg`
  *              (which is a pointer to a `pong_args` structure).]
@@ -485,12 +488,17 @@ void* pong_thread(void* unused) {
     char url[256];
 
     pthread_mutex_lock(&keepSilence);
-    
     conn = check_avail_connection();
     if(conn == NULL)
-        conn = add_connection(pong_addr);
-    
-   //conn = http_connect(pong_addr);
+        conn = http_connect(pong_addr);
+    else
+    {
+        conn -> state = HTTP_REQUEST;
+        conn -> owner  = pthread_self();
+    }
+
+
+    //conn = http_connect(pong_addr);
 
     while(1)
     {
@@ -499,7 +507,7 @@ void* pong_thread(void* unused) {
             case HTTP_REQUEST:
                 snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
                 http_send_request(conn, url);
- 
+                printf("Thread %d: fd: %d: %d\t%d\n", (int) pthread_self(), conn -> fd, pa.x, pa.y);
                 break;
 
             case HTTP_INITIAL:      // Before first line of response
@@ -511,13 +519,13 @@ void* pong_thread(void* unused) {
                 break;
 
             case HTTP_BODY:     // In body
-                pthread_mutex_unlock(&keepSilence);
                 pthread_cond_signal(&condvar);
+                pthread_mutex_unlock(&keepSilence);
                 http_receive_response_body(conn);
                 // Phase4
                 if( conn -> buf[0] == '+')
                 {
-                    pthread_mutex_lock(&keepSilence);
+                    //pthread_mutex_lock(&keepSilence);
                     char* waitTimeString = &(conn -> buf[1]);
                     int i = 0;
                     while(waitTimeString[i] != ' ')
@@ -527,7 +535,7 @@ void* pong_thread(void* unused) {
                     waitTime = atoi(waitTimeString);    // microseconds
                     
                     usleep(waitTime * 1000);            // milliseconds
-                    pthread_mutex_unlock(&keepSilence);
+                    //pthread_mutex_unlock(&keepSilence);
                 }
                 // End of Phase4
                 break;
@@ -540,19 +548,17 @@ void* pong_thread(void* unused) {
                     waitTime *= 2;
                 
                     // FIXME:
-                    http_close(conn);
+                    drop_connection(conn);
+                    
                     conn = http_connect(pong_addr);
                 }
                 // End of Phase1
                 break;
 
             case HTTP_DONE:     // Body complete, available for a new request
+                conn -> owner = 0;
+                add_connection(conn);
             case HTTP_CLOSED:   // Body complete, connection closed
-                /*http_close(conn);
-                pthread_mutex_lock(&threadsCountMutex);
-                --threadsCount;
-                pthread_mutex_lock(&threadsCountMutex);
-                */
                 pthread_exit(NULL);
         }
     }    
@@ -661,7 +667,7 @@ int main(int argc, char** argv) {
         update_position();
 
         // TODO: thread that removes unused connections:
-        pthread_t thr_clean;
-        pthread_create(&thr_clean, NULL, clean_connections, NULL);
+        //pthread_t thr_clean;
+        //pthread_create(&thr_clean, NULL, clean_connections, NULL);
     }
 }
