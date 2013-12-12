@@ -41,6 +41,8 @@ typedef struct pong_args {
     int state;
 } pong_args;
 
+pong_args pa;
+
 pthread_mutex_t mutex;
 pthread_mutex_t keepSilence;
 pthread_cond_t condvar;
@@ -393,7 +395,6 @@ void* pong_thread(void* threadarg) {
 
     } // end of while
 
-    //http_close(conn);
     // signal the main thread to continue
     if (skip == 0) 
     {
@@ -490,6 +491,9 @@ void update_position(void)
         dy = -dy;
         y += 2 * dy;
     }
+
+    pa.x = x;
+    pa.y = y;
 }
 
 /**
@@ -563,10 +567,6 @@ int main(int argc, char** argv) {
     
     while (1)
     {
-        pong_args pa;
-        pa.x = x;
-        pa.y = y;
-
         // creating new thread to handle the next position
         pthread_t pt;
         if (pthread_create(&pt, NULL, pong_thread, &pa))
@@ -583,19 +583,7 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock(&mutex);
 
         update_position();
-        /*
-        // TODO: standalone function
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-        */
+
         // wait 0.1sec
         usleep(100000);
     }
