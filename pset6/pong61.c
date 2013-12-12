@@ -42,11 +42,15 @@ typedef struct pong_args {
 } pong_args;
 
 pthread_mutex_t mutex;
-pthread_mutex_t shutUpEverybody;
+pthread_mutex_t keepSilence;
 pthread_cond_t condvar;
 
-// head of the connection table
-char*headCT = (char*)"h";
+// current position of the ball
+int x = 0, y = 0;
+// ball step size
+int dx = 1, dy = 1;
+// board dimensions:
+int width, height;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -285,10 +289,10 @@ void* pong_thread(void* threadarg) {
     pong_args pa = *((pong_args*) threadarg);
 
     char url[256];
-    pthread_mutex_lock(&shutUpEverybody);
+    pthread_mutex_lock(&keepSilence);
     snprintf(url, sizeof(url),  "move?x=%d&y=%d&style=on",
              pa.x, pa.y);
-    pthread_mutex_unlock(&shutUpEverybody);
+    pthread_mutex_unlock(&keepSilence);
 
     http_connection* conn;
 
@@ -297,7 +301,7 @@ void* pong_thread(void* threadarg) {
     int waitTime = 1;
     int skip = 0;
 
-    int currentList = 0;
+    //int currentList = 0;
     while (1)
     {
         /*
@@ -441,7 +445,7 @@ void* pong_thread(void* threadarg) {
         int result = strncmp("0 OK", conn -> buf, 4);
         if( result != 0 )
         {
-            pthread_mutex_lock(&shutUpEverybody);
+            pthread_mutex_lock(&keepSilence);
           char* waitTimeString = &(conn -> buf[1]);
           int i = 0;
           while(waitTimeString[i] != ' ')
@@ -452,7 +456,7 @@ void* pong_thread(void* threadarg) {
           
           usleep(waitTime * 1000);            // milliseconds
 
-          pthread_mutex_unlock(&shutUpEverybody);
+          pthread_mutex_unlock(&keepSilence);
         }
         break;
             }
@@ -488,117 +492,6 @@ void* pong_thread(void* threadarg) {
 static void usage(void) {
     fprintf(stderr, "Usage: ./pong61 [-h HOST] [-p PORT] [USER]\n");
     exit(1);
-}
-
-
-/**
- * [main The main loop]
- * @param  argc [number of arguments]
- * @param  argv [arguments]
- * @return      [description]
- */
-int main(int argc, char** argv) {
-    // parse arguments
-    int ch, nocheck = 0;
-    while ((ch = getopt(argc, argv, "nh:p:u:")) != -1) {
-        if (ch == 'h')
-            pong_host = optarg;
-        else if (ch == 'p')
-            pong_port = optarg;
-        else if (ch == 'u')
-            pong_user = optarg;
-        else if (ch == 'n')
-            nocheck = 1;
-        else
-            usage();
-    }
-    if (optind == argc - 1)
-        pong_user = argv[optind];
-    else if (optind != argc)
-        usage();
-
-    // look up network address of pong server
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_NUMERICSERV;
-    int r = getaddrinfo(pong_host, pong_port, &hints, &pong_addr);
-    if (r != 0) {
-        fprintf(stderr, "problem looking up %s: %s\n",
-                pong_host, gai_strerror(r));
-        exit(1);
-    }
-
-    // reset pong board and get its dimensions
-    int width, height;
-    {
-        http_connection* conn = http_connect(pong_addr);
-        http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
-        http_receive_response_headers(conn);
-        http_receive_response_body(conn);
-        if (conn->status_code != 200
-            || sscanf(conn->buf, "%d %d\n", &width, &height) != 2
-            || width <= 0 || height <= 0) {
-            fprintf(stderr, "bad response to \"reset\" RPC: %d %s\n",
-                    conn->status_code, http_truncate_response(conn));
-            exit(1);
-        }
-        http_close(conn);
-    }
-    // measure future times relative to this moment
-    elapsed_base = timestamp();
-
-    // print display URL
-    printf("Display: http://%s:%s/%s/%s\n",
-           pong_host, pong_port, pong_user,
-           nocheck ? " (NOCHECK mode)" : "");
-
-    // initialize global synchronization objects
-    pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&shutUpEverybody, NULL);
-    pthread_cond_init(&condvar, NULL);
-
-    // play game
-    int x = 0, y = 0, dx = 1, dy = 1;
-    char url[BUFSIZ];
-
-    while (1)
-    {
-        pong_args pa;
-        pa.x = x;
-        pa.y = y;
-
-        // creating new thread to handle the next position
-        pthread_t pt;
-        if (pthread_create(&pt, NULL, pong_thread, &pa))
-        {
-            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
-            exit(1);
-        }
-
-        startTime = elapsed();
-        openThreads ++;
-        // wait until that thread signals us to continue
-        pthread_mutex_lock(&mutex);
-        pthread_cond_wait(&condvar, &mutex);
-    pthread_mutex_unlock(&mutex);
-
-        // update position
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-
-        // wait 0.1sec
-        usleep(100000);
-    }
 }
 
 
@@ -660,4 +553,112 @@ static int http_check_response_body(http_connection* conn) {
     }
     return conn->state == HTTP_BODY;
     
+}
+
+/**
+ * [main The main loop]
+ * @param  argc [number of arguments]
+ * @param  argv [arguments]
+ * @return      [description]
+ */
+int main(int argc, char** argv) {
+    // parse arguments
+    int ch, nocheck = 0;
+    while ((ch = getopt(argc, argv, "nh:p:u:")) != -1) {
+        if (ch == 'h')
+            pong_host = optarg;
+        else if (ch == 'p')
+            pong_port = optarg;
+        else if (ch == 'u')
+            pong_user = optarg;
+        else if (ch == 'n')
+            nocheck = 1;
+        else
+            usage();
+    }
+    if (optind == argc - 1)
+        pong_user = argv[optind];
+    else if (optind != argc)
+        usage();
+
+    // look up network address of pong server
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_NUMERICSERV;
+    int r = getaddrinfo(pong_host, pong_port, &hints, &pong_addr);
+    if (r != 0) {
+        fprintf(stderr, "problem looking up %s: %s\n",
+                pong_host, gai_strerror(r));
+        exit(1);
+    }
+
+    // reset pong board and get its dimensions
+    {
+        http_connection* conn = http_connect(pong_addr);
+        http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
+        http_receive_response_headers(conn);
+        http_receive_response_body(conn);
+        if (conn->status_code != 200
+            || sscanf(conn->buf, "%d %d\n", &width, &height) != 2
+            || width <= 0 || height <= 0) {
+            fprintf(stderr, "bad response to \"reset\" RPC: %d %s\n",
+                    conn->status_code, http_truncate_response(conn));
+            exit(1);
+        }
+        http_close(conn);
+    }
+    // measure future times relative to this moment
+    elapsed_base = timestamp();
+
+    // print display URL
+    printf("Display: http://%s:%s/%s/%s\n",
+           pong_host, pong_port, pong_user,
+           nocheck ? " (NOCHECK mode)" : "");
+
+    // initialize global synchronization objects
+    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&keepSilence, NULL);
+    pthread_cond_init(&condvar, NULL);
+
+    // play game
+    
+    while (1)
+    {
+        pong_args pa;
+        pa.x = x;
+        pa.y = y;
+
+        // creating new thread to handle the next position
+        pthread_t pt;
+        if (pthread_create(&pt, NULL, pong_thread, &pa))
+        {
+            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
+            exit(1);
+        }
+
+        startTime = elapsed();
+        openThreads ++;
+        // wait until that thread signals us to continue
+        pthread_mutex_lock(&mutex);
+        pthread_cond_wait(&condvar, &mutex);
+        pthread_mutex_unlock(&mutex);
+
+        // update position
+        // TODO: standalone function
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
+
+        // wait 0.1sec
+        usleep(100000);
+    }
 }
