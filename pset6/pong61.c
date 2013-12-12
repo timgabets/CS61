@@ -31,9 +31,6 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
-// Global variables
-double startTime;
-
 // board dimensions:
 int width, height;
 // ball startup position:
@@ -291,10 +288,8 @@ http_connection* check_connection(int currentList)
     else 
     {        
         http_connection* temp = head;
-        
         if (temp -> next == NULL) 
         {
-            // If next connection is null add a connectione to linked list
             conn = http_connect(pong_addr);
             temp ->next = conn;
         } 
@@ -358,11 +353,8 @@ http_connection* check_connection(int currentList)
  * (which is a pointer to a `pong_args` structure).]
  * @param threadarg [description]
  */
-void* pong_thread(void* threadarg) {
+void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
-
-    // Copy thread arguments onto our stack.
-    //pong_args pa = *((pong_args*) threadarg);
 
     char url[256];
     pthread_mutex_lock(&shutUpEverybody);
@@ -370,14 +362,12 @@ void* pong_thread(void* threadarg) {
              pa.x, pa.y);
     pthread_mutex_unlock(&shutUpEverybody);
 
+    int waitTime = 1,
+        skip = 0,
+        currentList = 0;
+    
     http_connection* conn;
 
-    // Start Phase 1 code
-    // Repeat until status code is not -1
-    int waitTime = 1;
-    int skip = 0;
-
-    int currentList = 0;
     while (1)
     {  
         conn = check_connection(currentList);
@@ -386,7 +376,7 @@ void* pong_thread(void* threadarg) {
         http_receive_response_headers(conn);
 
         // Phase 5 code
-        if (conn->len > 100)
+        if (conn -> len > 100)
             break;
 
         switch(conn -> status_code)
@@ -612,15 +602,12 @@ int main(int argc, char** argv) {
             exit(1);
         }
 
-        startTime = elapsed();
-
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
         pthread_mutex_unlock(&mutex);
 
         update_position();
-
         usleep(100000);     // wait 0.1sec
     }
 }
