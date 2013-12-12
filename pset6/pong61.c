@@ -282,8 +282,6 @@ char* http_truncate_response(http_connection* conn) {
 http_connection* check_connection(int currentList)
 {
     http_connection* conn;
-    // Phase 3 start
-    // if first connection make it the header of the linked list
     if (head == NULL) 
     {
         conn = http_connect(pong_addr);
@@ -292,8 +290,8 @@ http_connection* check_connection(int currentList)
     }   
     else 
     {        
-        // Get the the first connection
         http_connection* temp = head;
+        
         if (temp -> next == NULL) 
         {
             // If next connection is null add a connectione to linked list
@@ -302,7 +300,7 @@ http_connection* check_connection(int currentList)
         } 
         else 
         { 
-           
+        
             // running through a linked list
             while(temp -> next != NULL) 
             {
@@ -310,44 +308,46 @@ http_connection* check_connection(int currentList)
                 http_connection *nextConnTemp = temp -> next;
                 http_connection *oldConnTemp = temp;
                 temp = nextConnTemp;
-                
-                // Found a free connection... use it.
-                if(temp ->state == HTTP_DONE || temp ->state == HTTP_REQUEST) 
+    
+                switch (temp -> state)
                 {
-                    conn = temp;
-                    return conn;
-                } 
-                
-                if (temp -> state == HTTP_BROKEN)
-                {
-                  http_connection *connTemp2 = http_connect(pong_addr);
-                  connTemp2->next = temp -> next;
-                  oldConnTemp->next = connTemp2;
-                  http_close(temp);
-                  conn = connTemp2;
-                  return conn;
-                } 
+                    case HTTP_DONE:
+                    case HTTP_REQUEST:
+                        conn = temp;
+                        return conn;
 
-                // No free connection add a connection to linked list
-                else if (temp -> next == NULL) 
+                    case HTTP_BROKEN:
                     {
-                    if (currentList > 25) {
-                        temp  = head ;
-                        currentList = 0;
-                  
-                    }  
-                  
-                  else {
-                    conn = http_connect(pong_addr);
-                    temp -> next = conn;
-                    return conn;
-                    
-                
+                        http_connection *connTemp2 = http_connect(pong_addr);
+                        connTemp2->next = temp -> next;
+                        oldConnTemp->next = connTemp2;
+                        http_close(temp);
+                        conn = connTemp2;
+                        return conn;
                     }
-                }
-            }
+
+                    default:
+                    {
+                        if (temp -> next == NULL) 
+                        {
+                            if (currentList > 25)
+                            {
+                                temp = head;
+                                currentList = 0;
+                            }               
+                            else 
+                            {
+                                conn = http_connect(pong_addr);
+                                temp -> next = conn;
+                                return conn;
+                            }
+                        }
+                    }
+
+                }   //end switch
+            }   // end while
         }
-        }    
+    }    
 
     return conn;
 
