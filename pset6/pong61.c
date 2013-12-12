@@ -33,7 +33,6 @@ static struct addrinfo* pong_addr;
 
 // Global variables
 int openConnections = 0;
-int openThreads = 0;
 double startTime;
 
 // board dimensions:
@@ -375,7 +374,7 @@ void* pong_thread(void* threadarg) {
     pthread_detach(pthread_self());
 
     // Copy thread arguments onto our stack.
-    pong_args pa = *((pong_args*) threadarg);
+    //pong_args pa = *((pong_args*) threadarg);
 
     char url[256];
     pthread_mutex_lock(&shutUpEverybody);
@@ -406,7 +405,6 @@ void* pong_thread(void* threadarg) {
         {
             case 200:
             {
-
                 skip = 1;
                 pthread_cond_signal(&condvar);
                 http_receive_response_body(conn);
@@ -437,56 +435,17 @@ void* pong_thread(void* threadarg) {
                 break;
 
             default:
-                fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);       
+                fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
         }
 
         if(skip == 1)
-            break;  // fro while
-
-        /*
-        // Phase 4        
-        if (conn->status_code == 200)
-        {
-            skip = 1;
-            pthread_cond_signal(&condvar);
-            http_receive_response_body(conn);
-        
-            int result = strncmp("0 OK", conn -> buf, 4);
-            if( result != 0 )
-            {
-                pthread_mutex_lock(&shutUpEverybody);
-                char* waitTimeString = &(conn -> buf[1]);
-                int i = 0;
-                while(waitTimeString[i] != ' ')
-                i++;
-
-                waitTimeString[i] = '\0';
-                waitTime = atoi(waitTimeString);    // microseconds
-          
-                usleep(waitTime * 1000);            // milliseconds
-
-                pthread_mutex_unlock(&shutUpEverybody);
-            }
-
-            break;
-        }
-
-        else if(conn->status_code == -1)
-        {
-            usleep(waitTime * 100000);
-            waitTime *= 2;
-        }else
-        {
-            fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
-        }
-        */
+            break;  // from while
     }
 
     // signal the main thread to continue
     if (skip == 0) 
         pthread_cond_signal(&condvar);
 
-    openThreads --;
     pthread_exit(NULL);
 }
 
@@ -659,14 +618,13 @@ int main(int argc, char** argv) {
     {
         // creating new thread to handle the next position
         pthread_t pt;
-        if (pthread_create(&pt, NULL, pong_thread, &pa))
+        if (pthread_create(&pt, NULL, pong_thread, NULL))
         {
             fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
             exit(1);
         }
 
         startTime = elapsed();
-        openThreads ++;
 
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
