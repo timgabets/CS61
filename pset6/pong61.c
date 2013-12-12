@@ -43,8 +43,16 @@ int x = 0, y = 0;
 // ball step sizes:
 int dx = 1, dy = 1;
 
-// head of the connection table
-char*headCT = (char*)"h";
+typedef struct pong_args {
+    int x;
+    int y;
+} pong_args;
+
+pong_args pa;
+
+pthread_mutex_t mutex;
+pthread_mutex_t shutUpEverybody;
+pthread_cond_t condvar;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -82,6 +90,8 @@ struct http_connection {
     size_t len;             // Length of response buffer
     struct http_connection *next;
 };
+
+http_connection* head = NULL;
 
 // `http_connection::state` constants
 #define HTTP_REQUEST 0      // Request not sent yet
@@ -270,20 +280,6 @@ char* http_truncate_response(http_connection* conn) {
 }
 
 
-// MAIN PROGRAM
-
-typedef struct pong_args {
-    int x;
-    int y;
-    int state;
-} pong_args;
-
-pong_args pa;
-
-pthread_mutex_t mutex;
-pthread_mutex_t shutUpEverybody;
-pthread_cond_t condvar;
-
 /**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
  * (which is a pointer to a `pong_args` structure).]
@@ -311,20 +307,18 @@ void* pong_thread(void* threadarg) {
     int currentList = 0;
     while (1)
     {
-        if(pa.state != HTTP_DONE)
-        {
         // Phase 3 start
         // if first connection make it the header of the linked list
-        if (*headCT == 'h') 
+        if (head == NULL) 
         {
             conn = http_connect(pong_addr);
             openConnections ++;
-            headCT = (char*)conn;
+            head  = conn;
         }   
         else 
         {        
             // Get the the first connection
-            http_connection *nextConn = (http_connection*)headCT;
+            http_connection* nextConn = head ;
         
             // If the first connection is availeable... use it. 
             if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
@@ -368,7 +362,7 @@ void* pong_thread(void* threadarg) {
                 else if (nextConn->next == NULL) 
                 {
                   if (currentList > 25) {
-                    nextConn = (http_connection*)headCT;
+                    nextConn = head ;
                     currentList = 0;
                   
                   } 
@@ -385,7 +379,6 @@ void* pong_thread(void* threadarg) {
             }
         }
         }
-    } 
  
     http_send_request(conn, url);
     http_receive_response_headers(conn);
@@ -512,7 +505,9 @@ static int http_check_response_body(http_connection* conn) {
     
 }
 
-
+/**
+ * [update_position description]
+ */
 void update_position(void)
 {
     x += dx;
