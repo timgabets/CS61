@@ -372,62 +372,58 @@ void* pong_thread(void* unused) {
     while (1)
     {  
         conn = check_connection(currentList);
+ 
+    http_send_request(conn, url);
+    http_receive_response_headers(conn);
 
-        http_send_request(conn, url);
-        http_receive_response_headers(conn);
+    
+        if (conn->status_code == 200) {
+        skip = 1;
+        pthread_cond_signal(&condvar);
+        http_receive_response_body(conn);
+       
+        int result = strncmp("0 OK", conn -> buf, 4);
+        if( result != 0 ) {
+            // If it is not 0 OK it is a stop...
+            // lock the critical zone to avoid threads going in
+            pthread_mutex_lock(&shutUpEverybody);
+        
+        // Parse the time to stop
+        char* waitTimeString = &(conn -> buf[1]);
+        int i = 0;
+        while(waitTimeString[i] != ' ')
+          i++;
+
+        waitTimeString[i] = '\0';
+        waitTime = atoi(waitTimeString);          
+        
+        // Sleep for given time
+        usleep(waitTime * 1000);      
+        
+        // Unlock
         pthread_mutex_unlock(&shutUpEverybody);
-
-        // Phase 5 code
-        if (conn -> len > 100)
-        {
-            break;
         }
-
-        switch(conn -> status_code)
-        {
-            case 200:
-            {
-                skip = 1;
-                pthread_cond_signal(&condvar);
-                http_receive_response_body(conn);
-                
-                int result = strncmp("0 OK", conn -> buf, 4);
-                if( result != 0 )
-                {
-                    pthread_mutex_lock(&shutUpEverybody);
-                    char* waitTimeString = &(conn -> buf[1]);
-                    int i = 0;
-                    while(waitTimeString[i] != ' ')
-                    i++;
-
-                    waitTimeString[i] = '\0';
-                    waitTime = atoi(waitTimeString);    // microseconds
-          
-                    usleep(waitTime * 1000);            // milliseconds
-
-                    pthread_mutex_unlock(&shutUpEverybody);
-                }
-
-                break;  // from switch
-            }
-
-            case -1:
-                usleep(waitTime * 100000);
-                waitTime *= 2;
-                break;
-
-            default:
-                fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
+        break;
+    } else if(conn->status_code == -1) {
+            
+        // Retry...
+        usleep(waitTime * 100000);
+            // Exponential Backoff...
+            // Next try wait 2 to the power of waitTime
+            waitTime = 1 << waitTime;
+        } else {
+        fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
         }
-
-        if(skip == 1)
-            break;  // from while
     }
 
     // signal the main thread to continue
     if (skip == 0) 
+    {
         pthread_cond_signal(&condvar);
-
+    }
+    // decrement connections
+    //openThreads --;
+    // and exit!
     pthread_exit(NULL);
 }
 
