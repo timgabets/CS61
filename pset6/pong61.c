@@ -279,6 +279,92 @@ char* http_truncate_response(http_connection* conn) {
     return conn->buf;
 }
 
+/**
+ * [check_connection description]
+ * @return  [description]
+ */
+http_connection* check_connection(int currentList)
+{
+    http_connection* conn;
+    // Phase 3 start
+    // if first connection make it the header of the linked list
+    if (head == NULL) 
+    {
+        conn = http_connect(pong_addr);
+        openConnections ++;
+        head  = conn;
+        return conn;
+    }   
+    else 
+    {        
+            // Get the the first connection
+            http_connection* temp  = head ;
+        
+            // If the first connection is availeable... use it. 
+            if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) 
+            {
+                conn = temp;
+            }
+            else    if (temp ->next == NULL) 
+                    {
+                        // If next connection is null add a connectione to linked list
+                        conn = http_connect(pong_addr);
+                        openConnections ++;
+                        temp ->next = conn;
+                    } 
+                    else 
+                    { 
+           
+            // running through a linked list
+            while(temp ->next != NULL) 
+            {
+                currentList ++;
+                http_connection *nextConnTemp = temp ->next;
+                http_connection *oldConnTemp = temp;
+                temp = nextConnTemp;
+                
+                // Found a free connection... use it. 
+                if(temp ->state == HTTP_DONE || temp ->state == HTTP_REQUEST) 
+                {
+                    conn = temp ;
+                    return conn;
+                } 
+                
+                if (temp -> state == HTTP_BROKEN)
+                {
+                  http_connection *connTemp2 = http_connect(pong_addr);
+                  connTemp2->next = temp -> next;
+                  oldConnTemp->next = connTemp2;
+                  http_close(temp);
+                  conn = connTemp2;
+                  return conn;
+                } 
+
+                // No free connection add a connection to linked list
+                else if (temp -> next == NULL) 
+                    {
+                    if (currentList > 25) {
+                        temp  = head ;
+                        currentList = 0;
+                  
+                    }  
+                  
+                  else {
+                    conn = http_connect(pong_addr);
+                    openConnections ++;
+                    temp -> next = conn;
+                    return conn;
+                    
+                
+                    }
+                }
+            }
+        }
+        }    
+
+    return conn;
+
+}
 
 /**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
@@ -307,6 +393,7 @@ void* pong_thread(void* threadarg) {
     int currentList = 0;
     while (1)
     {
+        /*
         // Phase 3 start
         // if first connection make it the header of the linked list
         if (head == NULL) 
@@ -318,59 +405,61 @@ void* pong_thread(void* threadarg) {
         else 
         {        
             // Get the the first connection
-            http_connection* nextConn = head ;
+            http_connection* temp  = head ;
         
             // If the first connection is availeable... use it. 
-            if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
+            if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) 
             {
-                conn = (http_connection*)nextConn;
+                conn = temp;
             }
-            else    if (nextConn->next == NULL) 
+            else    if (temp ->next == NULL) 
                     {
                         // If next connection is null add a connectione to linked list
                         conn = http_connect(pong_addr);
                         openConnections ++;
-                        nextConn->next = conn;
+                        temp ->next = conn;
                     } 
                     else 
                     { 
            
-            // Loop thorugh linked list 
-            while(nextConn->next != NULL) 
+            // running through a linked list
+            while(temp ->next != NULL) 
             {
                 currentList ++;
-                http_connection *nextConnTemp = nextConn->next;
-                http_connection *oldConnTemp = nextConn;
-                nextConn = nextConnTemp;
+                http_connection *nextConnTemp = temp ->next;
+                http_connection *oldConnTemp = temp;
+                temp = nextConnTemp;
                 
                 // Found a free connection... use it. 
-                if(nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
+                if(temp ->state == HTTP_DONE || temp ->state == HTTP_REQUEST) 
                 {
-                    conn = (http_connection*)nextConn;
+                    conn = temp ;
                     break;
                 } 
-                if (nextConn->state == HTTP_BROKEN){
+                
+                if (temp -> state == HTTP_BROKEN)
+                {
                   http_connection *connTemp2 = http_connect(pong_addr);
-                  connTemp2->next = nextConn->next;
+                  connTemp2->next = temp -> next;
                   oldConnTemp->next = connTemp2;
-                  http_close(nextConn);
+                  http_close(temp);
                   conn = connTemp2;
                   break;
-                    } 
-                
+                } 
+
                 // No free connection add a connection to linked list
-                else if (nextConn->next == NULL) 
-                {
-                  if (currentList > 25) {
-                    nextConn = head ;
-                    currentList = 0;
+                else if (temp -> next == NULL) 
+                    {
+                    if (currentList > 25) {
+                        temp  = head ;
+                        currentList = 0;
                   
-                  } 
+                    }  
                   
                   else {
                     conn = http_connect(pong_addr);
                     openConnections ++;
-                    nextConn->next = conn;
+                    temp -> next = conn;
                     break;
                     
                 
@@ -379,7 +468,9 @@ void* pong_thread(void* threadarg) {
             }
         }
         }
- 
+    */
+    conn = check_connection(currentList);
+
     http_send_request(conn, url);
     http_receive_response_headers(conn);
 
