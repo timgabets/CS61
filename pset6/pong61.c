@@ -304,130 +304,50 @@ void* pong_thread(void* threadarg) {
     //int currentList = 0;
     while (1)
     {
-        /*
-        if(pa.state != HTTP_DONE)
-        {
-        // Phase 3 start
-        // if first connection make it the header of the linked list
-        if (*headCT == 'h') 
-        {
-            
-        }   
-        else 
-        {        
-            // Get the the first connection
-            http_connection *nextConn = (http_connection*)headCT;
-        
-        // If the first connection is availeable... use it. 
-        if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
-        {
-            conn = (http_connection*)nextConn;
-        }
-
-        // If next connection is null add a connectione to linked list
-        else if (nextConn->next == NULL) 
+        if(head == NULL)
         {
             conn = http_connect(pong_addr);
-            openConnections ++;
-            nextConn->next = conn;
-        } 
-        else 
-        { 
-           
-            // Loop thorugh linked list 
-            while(nextConn->next != NULL) 
-            {
-                currentList ++;
-            http_connection *nextConnTemp = nextConn->next;
-            http_connection *oldConnTemp = nextConn;
-            nextConn = nextConnTemp;
-            
-            // Found a free connection... use it. 
-            if(nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
-            {
-    
-                conn = (http_connection*)nextConn;
-                break;
-            } 
-            if (nextConn->state == HTTP_BROKEN){
-              http_connection *connTemp2 = http_connect(pong_addr);
-              connTemp2->next = nextConn->next;
-              oldConnTemp->next = connTemp2;
-              http_close(nextConn);
-              conn = connTemp2;
-              break;
-                } 
-            
-            // No free connection add a connection to linked list
-            else if (nextConn->next == NULL) 
-            {
-              if (currentList > 25) {
-                nextConn = (http_connection*)headCT;
-                currentList = 0;
-              
-              } 
-              
-              else {
-                conn = http_connect(pong_addr);
-                openConnections ++;
-                nextConn->next = conn;
-                break;
-                
-            
-                }
-            }
-            }
+            head = conn;
         }
-        }
-    } 
-    */
-   
-    if(head == NULL)
-    {
-        conn = http_connect(pong_addr);
-        head = conn;
-    }
-    else
-    {
-        // running through a linked list:
-        http_connection* temp = head;
-        http_connection* prev = NULL;
-        while(temp != NULL)
+        else
         {
-            if(temp -> state == HTTP_REQUEST || temp -> state == HTTP_DONE)
+            // running through a linked list:
+            http_connection* temp = head;
+            http_connection* prev = NULL;
+            while(temp != NULL)
             {
-                conn = temp;
-                break;
+                if(temp -> state == HTTP_REQUEST || temp -> state == HTTP_DONE)
+                {
+                    conn = temp;
+                    break;
+                }
+                // closing broken connection
+                if(temp -> state == HTTP_BROKEN)
+                {
+                    http_connection* new_conn = http_connect(pong_addr);
+                    new_conn -> next = temp -> next;
+                    
+                    if(prev != NULL)
+                        prev -> next = new_conn;
+                    http_close(temp);
+                    conn = new_conn;
+                    break;
+                }
+                prev = temp;
+                temp = temp -> next;
             }
 
-            // closing broken connection
-            if(temp -> state == HTTP_BROKEN)
+            if(temp == NULL)
             {
-                http_connection* new_conn = http_connect(pong_addr);
-                new_conn -> next = temp -> next;
-                
+                // we'd run through all the list, and no free coneection was found
+                http_connection* new_conn = http_connect(pong_addr);            
                 if(prev != NULL)
                     prev -> next = new_conn;
-
-                http_close(temp);
-                conn = new_conn;
-                break;
+    
+                    conn = new_conn;
             }
-
-            prev = temp;
-            temp = temp -> next;
         }
 
-        if(temp == NULL)
-        {
-            // we'd run through all the list, and no free coneection was found
-            http_connection* new_conn = http_connect(pong_addr);            
-            if(prev != NULL)
-                prev -> next = new_conn;
-
-            conn = new_conn;
-        }
-    }
 
     http_send_request(conn, url);
     http_receive_response_headers(conn);
@@ -446,24 +366,23 @@ void* pong_thread(void* threadarg) {
         if( result != 0 )
         {
             pthread_mutex_lock(&keepSilence);
-          char* waitTimeString = &(conn -> buf[1]);
-          int i = 0;
-          while(waitTimeString[i] != ' ')
-          i++;
+            char* waitTimeString = &(conn -> buf[1]);
+            int i = 0;
+            while(waitTimeString[i] != ' ')
+            i++;
 
-          waitTimeString[i] = '\0';
-          waitTime = atoi(waitTimeString);    // microseconds
+            waitTimeString[i] = '\0';
+            waitTime = atoi(waitTimeString);    // microseconds
           
-          usleep(waitTime * 1000);            // milliseconds
-
-          pthread_mutex_unlock(&keepSilence);
+            usleep(waitTime * 1000);            // milliseconds
+            pthread_mutex_unlock(&keepSilence);
         }
         break;
             }
         else if(conn->status_code == -1)
         {
             // Retry...
-        usleep(waitTime * 100000);
+            usleep(waitTime * 100000);
             // Exponential Backoff...
             // Next try wait 2 to the power of waitTime
             waitTime = 1 << waitTime;
@@ -471,7 +390,8 @@ void* pong_thread(void* threadarg) {
         {
             fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
         }
-    }
+
+    } // end of while
 
     //http_close(conn);
     // signal the main thread to continue
@@ -553,6 +473,23 @@ static int http_check_response_body(http_connection* conn) {
     }
     return conn->state == HTTP_BODY;
     
+}
+
+/**
+ * [update_position description]
+ */
+void update_position(void)
+{
+    x += dx;
+    y += dy;
+    if (x < 0 || x >= width) {
+        dx = -dx;
+        x += 2 * dx;
+    }
+    if (y < 0 || y >= height) {
+        dy = -dy;
+        y += 2 * dy;
+    }
 }
 
 /**
@@ -645,7 +582,8 @@ int main(int argc, char** argv) {
         pthread_cond_wait(&condvar, &mutex);
         pthread_mutex_unlock(&mutex);
 
-        // update position
+        update_position();
+        /*
         // TODO: standalone function
         x += dx;
         y += dy;
@@ -657,7 +595,7 @@ int main(int argc, char** argv) {
             dy = -dy;
             y += 2 * dy;
         }
-
+        */
         // wait 0.1sec
         usleep(100000);
     }
