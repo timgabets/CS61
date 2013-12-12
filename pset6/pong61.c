@@ -382,9 +382,39 @@ void* pong_thread(void* unused) {
     double waitTime = 10000;  // microseconds 
     char url[256];
 
-
     pthread_mutex_lock(&keepSilence);
-    conn = http_connect(pong_addr);
+
+    if(head == NULL)
+    {
+        conn = http_connect(pong_addr);
+        head = conn;
+    }
+    else
+    {
+        http_connection* temp = head;
+        while(temp != NULL)
+        {
+            switch (temp -> state) 
+            {
+                case HTTP_DONE:
+                case HTTP_REQUEST:
+                    conn = temp;
+                    break;
+
+                case HTTP_BROKEN:
+                {
+
+                }
+
+                default:
+                    break;
+            }
+        
+            temp = temp -> next;
+        }
+    }
+
+
 
     while(1)
     {
