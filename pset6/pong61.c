@@ -32,7 +32,6 @@ static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
 // Global variables
-int openConnections = 0;
 double startTime;
 
 // board dimensions:
@@ -70,8 +69,6 @@ double elapsed(void) {
     return timestamp() - elapsed_base;
 }
 
-
-// HTTP CONNECTION MANAGEMENT
 
 // http_connection
 //    This object represents an open HTTP connection to a server.
@@ -290,42 +287,34 @@ http_connection* check_connection(int currentList)
     if (head == NULL) 
     {
         conn = http_connect(pong_addr);
-        openConnections ++;
         head  = conn;
         return conn;
     }   
     else 
     {        
-            // Get the the first connection
-            http_connection* temp  = head ;
-        
-            // If the first connection is availeable... use it. 
-            if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) 
-            {
-                conn = temp;
-            }
-            else    if (temp ->next == NULL) 
-                    {
-                        // If next connection is null add a connectione to linked list
-                        conn = http_connect(pong_addr);
-                        openConnections ++;
-                        temp ->next = conn;
-                    } 
-                    else 
-                    { 
+        // Get the the first connection
+        http_connection* temp = head;
+        if (temp -> next == NULL) 
+        {
+            // If next connection is null add a connectione to linked list
+            conn = http_connect(pong_addr);
+            temp ->next = conn;
+        } 
+        else 
+        { 
            
             // running through a linked list
-            while(temp ->next != NULL) 
+            while(temp -> next != NULL) 
             {
                 currentList ++;
-                http_connection *nextConnTemp = temp ->next;
+                http_connection *nextConnTemp = temp -> next;
                 http_connection *oldConnTemp = temp;
                 temp = nextConnTemp;
                 
-                // Found a free connection... use it. 
+                // Found a free connection... use it.
                 if(temp ->state == HTTP_DONE || temp ->state == HTTP_REQUEST) 
                 {
-                    conn = temp ;
+                    conn = temp;
                     return conn;
                 } 
                 
@@ -350,7 +339,6 @@ http_connection* check_connection(int currentList)
                   
                   else {
                     conn = http_connect(pong_addr);
-                    openConnections ++;
                     temp -> next = conn;
                     return conn;
                     
