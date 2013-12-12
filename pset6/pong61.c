@@ -1,11 +1,12 @@
 /**
  * CS61 Problem Set 6. Adversarial Network Pong.
- *
+ *_th
  * This assignment will teach you some useful and common strategies 
  * for handling problems common in networking, including loss, delay, 
  * and low utilization. It will also teach you programming using threads. 
  * The setting is a game called network pong.
  * 
+ * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
  * 
  * November-December 2013
@@ -25,36 +26,27 @@
 #include <pthread.h>
 #include "serverinfo.h"
 
-#define MAXTHREADS 8
-int threadsCount = 0;
-
 static const char* pong_host = PONG_HOST;
 static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
-typedef struct pong_args{
-    int x;
-    int y;
-}pong_args;
-
-pong_args pa;
-
 // Global variables
+int openThreads = 0;
 double startTime;
 
-// board dimensions:
-int width, height; 
-// ball position:     
-int x, y;
-// ball step size:
-int dx = 1,
-    dy = 1;
+typedef struct pong_args {
+    int x;
+    int y;
+    int state;
+} pong_args;
 
-pthread_mutex_t threadsCountMutex;
-pthread_mutex_t keepSilence;
 pthread_mutex_t mutex;
-pthread_cond_t  condvar;
+pthread_mutex_t shutUpEverybody;
+pthread_cond_t condvar;
+
+// head of the connection table
+char*headCT = (char*)"h";
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -73,6 +65,7 @@ double elapsed(void) {
     return timestamp() - elapsed_base;
 }
 
+
 // HTTP CONNECTION MANAGEMENT
 
 // http_connection
@@ -89,11 +82,9 @@ struct http_connection {
 
     char buf[BUFSIZ];       // Response buffer
     size_t len;             // Length of response buffer
-    pthread_t owner;                // thread operating with this connection
-    struct http_connection *next;   // next element in hte linked list
+    struct http_connection *next;   // next element in the list
 };
 
-// head of linked list of active connections:
 http_connection* head = NULL;
 
 // `http_connection::state` constants
@@ -101,10 +92,9 @@ http_connection* head = NULL;
 #define HTTP_INITIAL 1      // Before first line of response
 #define HTTP_HEADERS 2      // After first line of response, in headers
 #define HTTP_BODY    3      // In body
-#define HTTP_DONE    (-1)   // Body complete, available for a new request
+#define HTTP_DONE   (-1)   // Body complete, available for a new request
 #define HTTP_CLOSED  (-2)   // Body complete, connection closed
 #define HTTP_BROKEN  (-3)   // Parse error
-//#define HTTP_BLOCKED (-4)   // Connection shouldn't be used
 
 // helper functions
 char* http_truncate_response(http_connection* conn);
@@ -137,7 +127,8 @@ http_connection* http_connect(const struct addrinfo* ai) {
     }
 
     // construct an http_connection object for this connection
-    http_connection* conn = (http_connection*) malloc(sizeof(http_connection));
+    http_connection* conn =
+        (http_connection*) malloc(sizeof(http_connection));
     conn->fd = fd;
     conn->state = HTTP_REQUEST;
     conn->eof = 0;
@@ -213,6 +204,10 @@ void http_receive_response_headers(http_connection* conn) {
     // read & parse data until told `http_process_response_headers`
     // tells us to stop
     while (http_process_response_headers(conn)) {
+      // Phase 5 code
+      if (conn->len != 0) {
+    return;
+      }
         ssize_t nr = read(conn->fd, &conn->buf[conn->len], BUFSIZ);
         if (nr == 0)
             conn->eof = 1;
@@ -278,112 +273,111 @@ char* http_truncate_response(http_connection* conn) {
     return conn->buf;
 }
 
-
 /**
- * [usage Explains how pong61 should be run.]
+ * [pong_thread Connect to the server at the position indicated by `threadarg`
+ * (which is a pointer to a `pong_args` structure).]
+ * @param threadarg [description]
  */
-static void usage(void) {
-    fprintf(stderr, "Usage: ./pong61 [-h HOST] [-p PORT] [USER]\n");
-    exit(1);
-}
-
-
-/**
- * [http_process_response_headers Parse the response represented by `conn->buf`. Returns 1
- * if more header data remains to be read, 0 if all headers have been consumed.] 
- * @param  conn [description]
- * @return      [description]
- */
-static int http_process_response_headers(http_connection* conn) {
-    size_t i = 0;
-    while ((conn->state == HTTP_INITIAL || conn->state == HTTP_HEADERS)
-           && i + 2 <= conn->len) {
-        if (conn->buf[i] == '\r' && conn->buf[i+1] == '\n') {
-            conn->buf[i] = 0;
-            if (conn->state == HTTP_INITIAL) {
-                int minor;
-                if (sscanf(conn->buf, "HTTP/1.%d %d",
-                           &minor, &conn->status_code) == 2)
-                    conn->state = HTTP_HEADERS;
-                else
-                    conn->state = HTTP_BROKEN;
-            } else if (i == 0)
-                conn->state = HTTP_BODY;
-            else if (strncmp(conn->buf, "Content-Length: ", 16) == 0) {
-                conn->content_length = strtoul(conn->buf + 16, NULL, 0);
-                conn->has_content_length = 1;
-            }
-            memmove(conn->buf, conn->buf + i + 2, conn->len - (i + 2));
-            conn->len -= i + 2;
-            i = 0;
-        } else
-            ++i;
-    }
-
-    if (conn->eof)
-        conn->state = HTTP_BROKEN;
-    return conn->state == HTTP_INITIAL || conn->state == HTTP_HEADERS;
-}
-
-
-/**
- * [http_check_response_body description]
- * @param  conn [description]
- * @return      [1 if more response data should be read into `conn->buf`,
- *               0 if the connection is broken or the response is complete.]
- */
-static int http_check_response_body(http_connection* conn) {
-    if (conn->state == HTTP_BODY
-        && (conn->has_content_length || conn->eof)
-        && conn->len >= conn->content_length)
-        conn->state = HTTP_DONE;
-    if (conn->eof && conn->state == HTTP_DONE)
-        conn->state = HTTP_CLOSED;
-    else if (conn->eof)
-        conn->state = HTTP_BROKEN;
-    return conn->state == HTTP_BODY;
-}
-
-
-/**
- * [update_position description]
- * @param unused [description]
- */
-void update_position(void)
-{
-        x += dx;
-        y += dy;
-        if (x < 0 || x >= width) {
-            dx = -dx;
-            x += 2 * dx;
-        }
-        if (y < 0 || y >= height) {
-            dy = -dy;
-            y += 2 * dy;
-        }
-
-        pa.x = x;
-        pa.y = y;
-
-        usleep(100000);    
-}
-
-
-
-/**
- * [pongt_thread Connect to the server at the position indicated by `threadarg`
- *              (which is a pointer to a `pong_args` structure).]
- * @param thread_id [description]
- */
-void* pong_thread(void* unused) {
+void* pong_thread(void* threadarg) {
     pthread_detach(pthread_self());
 
-    http_connection* conn;
-    double waitTime = 10000;  // microseconds 
+    // Copy thread arguments onto our stack.
+    pong_args pa = *((pong_args*) threadarg);
+
     char url[256];
+    pthread_mutex_lock(&shutUpEverybody);
+    snprintf(url, sizeof(url),  "move?x=%d&y=%d&style=on",
+             pa.x, pa.y);
+    pthread_mutex_unlock(&shutUpEverybody);
 
-    pthread_mutex_lock(&keepSilence);
+    http_connection* conn;
 
+    // Start Phase 1 code
+    // Repeat until status code is not -1
+    int waitTime = 1;
+    int skip = 0;
+
+    int currentList = 0;
+    while (1)
+    {
+        /*
+        if(pa.state != HTTP_DONE)
+        {
+        // Phase 3 start
+        // if first connection make it the header of the linked list
+        if (*headCT == 'h') 
+        {
+            
+        }   
+        else 
+        {        
+            // Get the the first connection
+            http_connection *nextConn = (http_connection*)headCT;
+        
+        // If the first connection is availeable... use it. 
+        if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
+        {
+            conn = (http_connection*)nextConn;
+        }
+
+        // If next connection is null add a connectione to linked list
+        else if (nextConn->next == NULL) 
+        {
+            conn = http_connect(pong_addr);
+            openConnections ++;
+            nextConn->next = conn;
+        } 
+        else 
+        { 
+           
+            // Loop thorugh linked list 
+            while(nextConn->next != NULL) 
+            {
+                currentList ++;
+            http_connection *nextConnTemp = nextConn->next;
+            http_connection *oldConnTemp = nextConn;
+            nextConn = nextConnTemp;
+            
+            // Found a free connection... use it. 
+            if(nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) 
+            {
+    
+                conn = (http_connection*)nextConn;
+                break;
+            } 
+            if (nextConn->state == HTTP_BROKEN){
+              http_connection *connTemp2 = http_connect(pong_addr);
+              connTemp2->next = nextConn->next;
+              oldConnTemp->next = connTemp2;
+              http_close(nextConn);
+              conn = connTemp2;
+              break;
+                } 
+            
+            // No free connection add a connection to linked list
+            else if (nextConn->next == NULL) 
+            {
+              if (currentList > 25) {
+                nextConn = (http_connection*)headCT;
+                currentList = 0;
+              
+              } 
+              
+              else {
+                conn = http_connect(pong_addr);
+                openConnections ++;
+                nextConn->next = conn;
+                break;
+                
+            
+                }
+            }
+            }
+        }
+        }
+    } 
+    */
+   
     if(head == NULL)
     {
         conn = http_connect(pong_addr);
@@ -391,90 +385,109 @@ void* pong_thread(void* unused) {
     }
     else
     {
+        // running through a linked list:
         http_connection* temp = head;
+        http_connection* prev = NULL;
         while(temp != NULL)
         {
-            switch (temp -> state) 
+            if(temp -> state == HTTP_REQUEST || temp -> state == HTTP_DONE)
             {
-                case HTTP_DONE:
-                case HTTP_REQUEST:
-                    conn = temp;
-                    break;
-
-                case HTTP_BROKEN:
-                {
-
-                }
-
-                default:
-                    break;
+                conn = temp;
+                break;
             }
-        
+
+            // closing broken connection
+            if(temp -> state == HTTP_BROKEN)
+            {
+                http_connection* new_conn = http_connect(pong_addr);
+                new_conn -> next = temp -> next;
+                
+                if(prev != NULL)
+                    prev -> next = new_conn;
+
+                http_close(temp);
+                conn = new_conn;
+                break;
+            }
+
+            prev = temp;
             temp = temp -> next;
+        }
+
+        if(temp == NULL)
+        {
+            // we'd run through all the list, and no free coneection was found
+            http_connection* new_conn = http_connect(pong_addr);            
+            if(prev != NULL)
+                prev -> next = new_conn;
+
+            conn = new_conn;
         }
     }
 
+    http_send_request(conn, url);
+    http_receive_response_headers(conn);
 
-
-    while(1)
-    {
-        switch(conn -> state)
+    // Phase 5 code
+    if (conn->len > 100) {
+      break;
+    }
+        if (conn->status_code == 200)
         {
-            case HTTP_REQUEST:
-                snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on", pa.x, pa.y);
-                http_send_request(conn, url);
-                break;
+        skip = 1;
+        pthread_cond_signal(&condvar);
+        http_receive_response_body(conn);
+    
+        int result = strncmp("0 OK", conn -> buf, 4);
+        if( result != 0 )
+        {
+            pthread_mutex_lock(&shutUpEverybody);
+          char* waitTimeString = &(conn -> buf[1]);
+          int i = 0;
+          while(waitTimeString[i] != ' ')
+          i++;
 
-            case HTTP_INITIAL:      // Before first line of response
-                http_receive_response_headers(conn);
-                break;
+          waitTimeString[i] = '\0';
+          waitTime = atoi(waitTimeString);    // microseconds
+          
+          usleep(waitTime * 1000);            // milliseconds
 
-            case HTTP_HEADERS:      // After first line of response, in headers
-                // TODO: what should happen here?
-                break;
-
-            case HTTP_BODY:     // In body
-                pthread_cond_signal(&condvar);
-                pthread_mutex_unlock(&keepSilence);
-                http_receive_response_body(conn);
-                // Phase4
-                if( conn -> buf[0] == '+')
-                {
-                    pthread_mutex_lock(&keepSilence);
-                    char* waitTimeString = &(conn -> buf[1]);
-                    int i = 0;
-                    while(waitTimeString[i] != ' ')
-                        i++;
-
-                    waitTimeString[i] = '\0';
-                    waitTime = atoi(waitTimeString);    // microseconds
-                    
-                    usleep(waitTime * 1000);            // milliseconds
-                    pthread_mutex_unlock(&keepSilence);
-                }
-                // End of Phase4
-                break;
-
-            case HTTP_BROKEN:   // Parse error
-                // Phase1
-                if(conn -> status_code == -1)
-                {
-                    usleep(waitTime);
-                    waitTime *= 2;
-                
-                    // FIXME:
-                    http_close(conn);
-                    conn = http_connect(pong_addr);
-                }
-                // End of Phase1
-                break;
-
-            case HTTP_DONE:     // Body complete, available for a new request
-            case HTTP_CLOSED:   // Body complete, connection closed
-                http_close(conn);
-                pthread_exit(NULL);
+          pthread_mutex_unlock(&shutUpEverybody);
         }
-    }    
+        break;
+            }
+        else if(conn->status_code == -1)
+        {
+            // Retry...
+        usleep(waitTime * 100000);
+            // Exponential Backoff...
+            // Next try wait 2 to the power of waitTime
+            waitTime = 1 << waitTime;
+        }else
+        {
+            fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
+        }
+    }
+
+    //http_close(conn);
+    // signal the main thread to continue
+    if (skip == 0) 
+    {
+        pthread_cond_signal(&condvar);
+    }
+    // decrement connections
+    openThreads --;
+    // and exit!
+    pthread_exit(NULL);
+}
+
+
+/**
+ * [usage Explains how pong61 should be run.]
+ */
+static void usage(void) {
+    fprintf(stderr, "Usage: ./pong61 [-h HOST] [-p PORT] [USER]\n");
+    exit(1);
 }
 
 
@@ -518,6 +531,7 @@ int main(int argc, char** argv) {
     }
 
     // reset pong board and get its dimensions
+    int width, height;
     {
         http_connection* conn = http_connect(pong_addr);
         http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
@@ -542,45 +556,108 @@ int main(int argc, char** argv) {
 
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&keepSilence, NULL);
-    pthread_mutex_init(&threadsCountMutex, NULL);
+    pthread_mutex_init(&shutUpEverybody, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
-    x = 0;
-    y = 0;
-    pa.x = x;
-    pa.y = y;
+    int x = 0, y = 0, dx = 1, dy = 1;
+    char url[BUFSIZ];
 
-    // managing pong threads:
-    while (1) 
+    while (1)
     {
-        /*
-        pthread_t thr_pong[MAXTHREADS];
-        if(threadsCount < MAXTHREADS)
+        pong_args pa;
+        pa.x = x;
+        pa.y = y;
+
+        // creating new thread to handle the next position
+        pthread_t pt;
+        if (pthread_create(&pt, NULL, pong_thread, &pa))
         {
-            pthread_create(&thr_pong[threadsCount], NULL, pong_thread, &pa);
-            pthread_mutex_lock(&threadsCountMutex);
-            threadsCount++;
-            pthread_mutex_unlock(&threadsCountMutex);
+            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
+            exit(1);
         }
-        */
-        pthread_t thr_pong;
-        pthread_create(&thr_pong, NULL, pong_thread, &pa);
-        
 
-        // TODO: do we need this?
         startTime = elapsed();
-
-        // waiting for a signal from thread to finish with current position
+        openThreads ++;
+        // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
-        pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex);
 
-        update_position();
+        // update position
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
 
-        // TODO: thread that removes unused connections:
-        //pthread_t thr_clean;
-        //pthread_create(&thr_clean, NULL, clean_connections, NULL);
+        // wait 0.1sec
+        usleep(100000);
     }
+}
+
+
+/**
+ * [http_process_response_headers Parse the response represented by `conn->buf`. Returns 1
+ * if more header data remains to be read, 0 if all headers have been consumed.] 
+ * @param  conn [description]
+ * @return      [description]
+ */
+static int http_process_response_headers(http_connection* conn) {
+    size_t i = 0;
+    while ((conn->state == HTTP_INITIAL || conn->state == HTTP_HEADERS)
+           && i + 2 <= conn->len) {
+      if (conn->buf[i] == '\r' && conn->buf[i+1] == '\n') {
+      conn->buf[i] = 0;
+            if (conn->state == HTTP_INITIAL) {
+            int minor;
+                if (sscanf(conn->buf, "HTTP/1.%d %d",
+                           &minor, &conn->status_code) == 2)
+                    conn->state = HTTP_HEADERS;
+                else
+                    conn->state = HTTP_BROKEN;
+            } else if (i == 0)
+                conn->state = HTTP_BODY;
+            else if (strncmp(conn->buf, "Content-Length: ", 16) == 0) {
+                conn->content_length = strtoul(conn->buf + 16, NULL, 0);
+                conn->has_content_length = 1;
+            }
+            memmove(conn->buf, conn->buf + i + 2, conn->len - (i + 2));
+            conn->len -= i + 2;
+            i = 0;
+      } else
+            ++i;
+    }
+
+    if (conn->eof)
+        conn->state = HTTP_BROKEN;
+    return conn->state == HTTP_INITIAL || conn->state == HTTP_HEADERS;
+}
+
+
+/**
+ * [http_check_response_body description]
+ * @param  conn [description]
+ * @return      [1 if more response data should be read into `conn->buf`,
+ *               0 if the connection is broken or the response is complete.]
+ */
+static int http_check_response_body(http_connection* conn) {
+  if (conn->state == HTTP_BODY
+        && (conn->has_content_length || conn->eof)
+        && conn->len >= conn->content_length) {
+        conn->state = HTTP_DONE; 
+    }
+    if (conn->eof && conn->state == HTTP_DONE) {
+        conn->state = HTTP_CLOSED; 
+    }
+    else if (conn->eof) {
+        conn->state = HTTP_BROKEN;
+    }
+    return conn->state == HTTP_BODY;
+    
 }
