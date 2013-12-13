@@ -34,7 +34,6 @@ static struct addrinfo* pong_addr;
 typedef struct pong_args {
     int x;
     int y;
-    int state;
 } pong_args;
 
 pong_args pa;
@@ -296,6 +295,14 @@ http_connection* check_connection(int currentList)
     } else {         
         
         http_connection* temp = head;
+/*
+        // running through a linked list:
+        while(temp != NULL)
+        {
+    
+            temp = temp -> next;
+        }
+*/
         // If the first connection is availeable... use it. 
         if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) {
             conn = temp ;
@@ -309,13 +316,13 @@ http_connection* check_connection(int currentList)
         } else { 
            
             // Loop thorugh linked list 
-            while(temp ->next != NULL) {
-                currentList ++;
+        while(temp ->next != NULL) 
+        {
+            currentList ++;
             http_connection *nextConnTemp = temp->next;
             http_connection *oldConnTemp = temp;
             temp = nextConnTemp;
             
-
             switch(temp -> state)
             {
                 case HTTP_DONE:
@@ -346,15 +353,14 @@ http_connection* check_connection(int currentList)
                         {
                             conn = http_connect(pong_addr);
                             temp -> next = conn;
-                            break;
+                            return conn;
                         }
                     }                    
             }   // end switch
-
-
-            }
-        }
-        }
+        }   // end while
+    
+    }
+    }
 
     return conn;
 }
