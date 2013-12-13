@@ -37,9 +37,6 @@ int x = 0, y = 0;
 // ball step size
 int dx = 1, dy = 1;
 
-int openConnections = 0;
-int openThreads = 0;
-double startTime;
 // head of the connection table
 char*headCT = (char*)"h";
 
@@ -313,7 +310,6 @@ void* pong_thread(void* threadarg) {
         // And set it as the head of the linked list
         if (*headCT == 'h') {
             conn = http_connect(pong_addr);
-            openConnections ++;
             headCT = (char*)conn;
         } else {         
             // Get the the first connection
@@ -326,7 +322,6 @@ void* pong_thread(void* threadarg) {
         // If next connection is null add a connectione to linked list
         else if (nextConn->next == NULL) {
             conn = http_connect(pong_addr);
-            openConnections ++;
             nextConn->next = conn;
         } else { 
            
@@ -362,7 +357,6 @@ void* pong_thread(void* threadarg) {
                 currentList = 0;
                 } else {
                     conn = http_connect(pong_addr);
-                openConnections ++;
                 nextConn->next = conn;
                 break;
                 }
@@ -417,12 +411,8 @@ void* pong_thread(void* threadarg) {
 
     // signal the main thread to continue
     if (skip == 0) 
-    {
         pthread_cond_signal(&condvar);
-    }
-    // decrement connections
-    openThreads --;
-    // and exit!
+    
     pthread_exit(NULL);
 }
 
@@ -598,8 +588,6 @@ int main(int argc, char** argv) {
             exit(1);
         }
 
-        startTime = elapsed();
-        openThreads ++;
         // wait until that thread signals us to continue
         pthread_mutex_lock(&mutex);
         pthread_cond_wait(&condvar, &mutex);
