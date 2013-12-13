@@ -51,7 +51,7 @@ int x = 0, y = 0;
 int dx = 1, dy = 1;
 
 // head of the connection table
-char*headCT = (char*)"h";
+http_connection* head = NULL;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -287,12 +287,13 @@ http_connection* check_connection(int currentList)
         // Use a linked list of 25 open connections
         // If the first connection is empty add a new connection...
         // And set it as the head of the linked list
-        if (*headCT == 'h') {
-            conn = http_connect(pong_addr);
-            headCT = (char*)conn;
-        } else {         
+    if (head == NULL) {
+        conn = http_connect(pong_addr);
+        head = conn;
+        return conn;
+    } else {         
             // Get the the first connection
-            http_connection *nextConn = (http_connection*)headCT;
+            http_connection *nextConn = head;
         
         // If the first connection is availeable... use it. 
         if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
@@ -332,7 +333,7 @@ http_connection* check_connection(int currentList)
             // Add a new conection to the linked list. If not start itereating again the linked list.
             else if (nextConn->next == NULL) {
                 if (currentList > 25) {
-                    nextConn = (http_connection*)headCT;
+                    nextConn = head;
                 currentList = 0;
                 } else {
                     conn = http_connect(pong_addr);
