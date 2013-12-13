@@ -295,29 +295,15 @@ http_connection* check_connection(int currentList)
     } else {         
         
         http_connection* temp = head;
-
+/*
         // running through a linked list:
-/*        while(temp != NULL)
-        {
-    
-            temp = temp -> next;
-        }
-
-        // If the first connection is availeable... use it. 
-        if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) {
-            conn = temp ;
-            return conn;
-        }
-        // If next connection is null add a connectione to linked list
-        else 
-*/
-            if (temp -> next == NULL) {
+        if (temp -> next == NULL) {
             conn = http_connect(pong_addr);
             temp -> next = conn;
             return conn;
         } else { 
-           
-            // Loop thorugh linked list 
+*/           
+        // Loop thorugh linked list 
         while(temp ->next != NULL) 
         {
             currentList ++;
@@ -361,7 +347,7 @@ http_connection* check_connection(int currentList)
             }   // end switch
         }   // end while
 
-    }
+    //}
     }
 
     return conn;
