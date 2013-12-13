@@ -6,7 +6,6 @@
  * and low utilization. It will also teach you programming using threads. 
  * The setting is a game called network pong.
  * 
- * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
  * Tim Gabets HUID 10924413 <tim@gabets.ru>
  * 
  * November-December 2013
@@ -290,51 +289,32 @@ http_connection* check_connection(int currentList)
 
     if (head == NULL) {
         conn = http_connect(pong_addr);
-        assert(conn != NULL);
         head = conn;
         return conn;
     } else {         
         
         http_connection* temp = head;
-        http_connection* prev = NULL;
+/*
         // running through a linked list:
         while(temp != NULL)
         {
-            switch(temp -> state)
-            {
-                case HTTP_DONE:
-                case HTTP_REQUEST:
-                    conn = temp;
-                    return conn;
-
-                case HTTP_BROKEN:
-                {
-                    http_connection* new = http_connect(pong_addr);
-                    assert(new != NULL);
-                    new -> next = temp -> next;
-
-                    if(prev != NULL)
-                        prev -> next = new;
-                    else
-                        head = new;
-                    
-                    http_close(temp);
-                    return new;
-                }
-            }
-        
-            prev = temp;
-            temp = temp -> next;    
-        } // end while
-    } 
-/*        
-      if (temp -> next == NULL) {
+    
+            temp = temp -> next;
+        }
+*/
+        // If the first connection is availeable... use it. 
+        if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) {
+            conn = temp ;
+            return conn;
+        }
+        // If next connection is null add a connectione to linked list
+        else if (temp -> next == NULL) {
             conn = http_connect(pong_addr);
             temp -> next = conn;
             return conn;
         } else { 
-         
-        // Loop thorugh linked list 
+           
+            // Loop thorugh linked list 
         while(temp ->next != NULL) 
         {
             currentList ++;
@@ -377,12 +357,11 @@ http_connection* check_connection(int currentList)
                     }                    
             }   // end switch
         }   // end while
-
-    //}
+    
     }
-*/
-    return NULL;
+    }
 
+    return conn;
 }
 
 /**
@@ -649,6 +628,3 @@ int main(int argc, char** argv) {
         usleep(100000);
     }
 }
-
-
-
