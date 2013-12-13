@@ -315,35 +315,43 @@ http_connection* check_connection(int currentList)
             http_connection *oldConnTemp = temp;
             temp = nextConnTemp;
             
-            // Found a free connection... use it. 
-            if(temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) {
-                conn = temp;
-                break;
-            } 
 
-            // If the connection is broken...
-            // Replace it with a new one
-            if (temp -> state == HTTP_BROKEN) {
-                http_connection *connTemp2 = http_connect(pong_addr);
-                connTemp2->next = temp -> next;
-                oldConnTemp -> next = connTemp2;
-                http_close(temp);
-                conn = connTemp2;
-                break;
-            } 
-            
-            // There was no connection. If we have less then 25 connections...
-            // Add a new conection to the linked list. If not start itereating again the linked list.
-            else if (temp -> next == NULL) {
-                if (currentList > 25) {
-                    temp = head;
-                currentList = 0;
-                } else {
-                    conn = http_connect(pong_addr);
-                temp -> next = conn;
-                break;
+            switch(temp -> state)
+            {
+                case HTTP_DONE:
+                case HTTP_REQUEST:
+                    conn = temp;
+                    return conn;
+
+                case HTTP_BROKEN:
+                {
+                    http_connection *connTemp2 = http_connect(pong_addr);
+                    connTemp2 -> next = temp -> next;
+                    oldConnTemp -> next = connTemp2;
+                    http_close(temp);
+                    conn = connTemp2;
+                    return conn;
                 }
-            }
+
+                default: 
+                    // There was no connection. If we have less then 25 connections...
+                    // Add a new conection to the linked list. If not start itereating again the linked list.
+                    if (temp -> next == NULL) 
+                    {
+                        if (currentList > 25)
+                        {
+                            temp = head;
+                            currentList = 0;
+                        } else 
+                        {
+                            conn = http_connect(pong_addr);
+                            temp -> next = conn;
+                            break;
+                        }
+                    }                    
+            }   // end switch
+
+
             }
         }
         }
