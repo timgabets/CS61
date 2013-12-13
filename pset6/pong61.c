@@ -496,6 +496,23 @@ static int http_check_response_body(http_connection* conn) {
     
 }
 
+void init_board(int nocheck)
+{
+    http_connection* conn = http_connect(pong_addr);
+    http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
+    http_receive_response_headers(conn);
+    http_receive_response_body(conn);
+    if (conn->status_code != 200
+        || sscanf(conn->buf, "%d %d\n", &width, &height) != 2
+        || width <= 0 || height <= 0) {
+        fprintf(stderr, "bad response to \"reset\" RPC: %d %s\n",
+                conn->status_code, http_truncate_response(conn));
+        exit(1);
+    }
+    http_close(conn);
+}
+
+
 void update_position()
 {
     // update position
@@ -554,21 +571,7 @@ int main(int argc, char** argv) {
     }
 
     // reset pong board and get its dimensions
-    
-    {
-        http_connection* conn = http_connect(pong_addr);
-        http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
-        http_receive_response_headers(conn);
-        http_receive_response_body(conn);
-        if (conn->status_code != 200
-            || sscanf(conn->buf, "%d %d\n", &width, &height) != 2
-            || width <= 0 || height <= 0) {
-            fprintf(stderr, "bad response to \"reset\" RPC: %d %s\n",
-                    conn->status_code, http_truncate_response(conn));
-            exit(1);
-        }
-        http_close(conn);
-    }
+    init_board(nocheck);
     // measure future times relative to this moment
     elapsed_base = timestamp();
 
