@@ -51,39 +51,40 @@ int x = 0, y = 0;
 int dx = 1, dy = 1;
 
 
-
 // TIME HELPERS
 double elapsed_base = 0;
 
-// timestamp()
-//    Return the current absolute time as a real number of seconds.
+
+/**
+ * [timestamp description]
+ * @return  [the current absolute time as a real number of seconds.]
+ */
 double timestamp(void) {
     struct timeval now;
     gettimeofday(&now, NULL);
     return now.tv_sec + (double) now.tv_usec / 1000000;
 }
 
-// elapsed()
-//    Return the number of seconds that have elapsed since `elapsed_base`.
+
+/**
+ * [elapsed ]
+ * @return  [the number of seconds that have elapsed since `elapsed_base`.]
+ */
 double elapsed(void) {
     return timestamp() - elapsed_base;
 }
 
-
-// HTTP CONNECTION MANAGEMENT
 
 // http_connection
 //    This object represents an open HTTP connection to a server.
 typedef struct http_connection http_connection;
 struct http_connection {
     int fd;                 // Socket file descriptor
-
     int state;              // Response parsing status (see below)
     int status_code;        // Response status code (e.g., 200, 402)
     size_t content_length;  // Content-Length value
     int has_content_length; // 1 iff Content-Length was provided
     int eof;                // 1 iff connection EOF has been reached
-
     char buf[BUFSIZ];       // Response buffer
     size_t len;             // Length of response buffer
     struct http_connection *next;
@@ -97,7 +98,7 @@ http_connection* head = NULL;
 #define HTTP_INITIAL 1      // Before first line of response
 #define HTTP_HEADERS 2      // After first line of response, in headers
 #define HTTP_BODY    3      // In body
-#define HTTP_DONE   (-1)   // Body complete, available for a new request
+#define HTTP_DONE   (-1)    // Body complete, available for a new request
 #define HTTP_CLOSED  (-2)   // Body /, connection closed
 #define HTTP_BROKEN  (-3)   // Parse error
 
@@ -110,7 +111,7 @@ static void usage(void);
 
 /**
  * [http_connect Opens a new connection to the server described by `ai`.]
- * @param  ai [description]
+ * @param  ai [address information data]
  * @return    [Returns a new `http_connection` object for that server 
  *             connection. Exits with an error message if the connection fails.]
  */
@@ -144,7 +145,7 @@ http_connection* http_connect(const struct addrinfo* ai) {
 
 /**
  * [http_close    Closes the HTTP connection `conn` and free its resources.]
- * @param conn [description]
+ * @param conn [connection data pointer]
  */
 void http_close(http_connection* conn) {
     close(conn->fd);
@@ -155,8 +156,8 @@ void http_close(http_connection* conn) {
 /**
  * [http_send_request Sends an HTTP POST request for `uri` to connection `conn`.
  *                    Exit on error.]
- * @param conn [description]
- * @param uri  [description]
+ * @param conn [connection data pointer]
+ * @param uri  [URI]
  */
 void http_send_request(http_connection* conn, const char* uri) {
     assert(conn->state == HTTP_REQUEST || conn->state == HTTP_DONE);
@@ -237,9 +238,9 @@ void http_receive_response_headers(http_connection* conn) {
 
 /**
  * [http_receive_response_body Read the server's response body. On return, 
- * `conn->buf` holds theresponse body, which is `conn->len` bytes long and has 
- * been null-terminated.]
- * @param conn [description]
+ *         `conn->buf` holds theresponse body, which is `conn->len` bytes 
+ *         long and has been null-terminated.]
+ * @param conn [connection data pointer]
  */
 void http_receive_response_body(http_connection* conn) {
     assert(conn->state < 0 || conn->state == HTTP_BODY);
@@ -267,8 +268,8 @@ void http_receive_response_body(http_connection* conn) {
  * [http_truncate_response Truncate the `conn` response text to a manageable 
  *                         length and return that truncated text. Useful for 
  *                         error messages.]
- * @param  conn [description]
- * @return      [description]
+ * @param  conn [connection data pointer]
+ * @return      [truncated string]
  */
 char* http_truncate_response(http_connection* conn) {
     char *eol = strchr(conn->buf, '\n');
@@ -279,7 +280,11 @@ char* http_truncate_response(http_connection* conn) {
     return conn->buf;
 }
 
-
+/**
+ * [check_connection checks for existing connection]
+ * @param  currentList [description]
+ * @return             [connection data pointer]
+ */
 http_connection* check_connection(int currentList)
 {
     http_connection* conn;
@@ -348,7 +353,7 @@ http_connection* check_connection(int currentList)
 /**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
  * (which is a pointer to a `pong_args` structure).]
- * @param threadarg [description]
+ * @param unused [unused]
  */
 void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
@@ -437,8 +442,8 @@ static void usage(void) {
 /**
  * [http_process_response_headers Parse the response represented by `conn->buf`. Returns 1
  * if more header data remains to be read, 0 if all headers have been consumed.] 
- * @param  conn [description]
- * @return      [description]
+ * @param  conn [connection data pointer]
+ * @return      [connection state]
  */
 static int http_process_response_headers(http_connection* conn) {
     size_t i = 0;
@@ -473,8 +478,8 @@ static int http_process_response_headers(http_connection* conn) {
 
 
 /**
- * [http_check_response_body description]
- * @param  conn [description]
+ * [http_check_response_body checks and changes the state of the connection]
+ * @param  conn [connection data pointer]
  * @return      [1 if more response data should be read into `conn->buf`,
  *               0 if the connection is broken or the response is complete.]
  */
@@ -494,6 +499,10 @@ static int http_check_response_body(http_connection* conn) {
     
 }
 
+/**
+ * [init_board resets pong board and get its dimensions]
+ * @param nocheck [description]
+ */
 void init_board(int nocheck)
 {
     http_connection* conn = http_connect(pong_addr);
@@ -510,10 +519,11 @@ void init_board(int nocheck)
     http_close(conn);
 }
 
-
-void update_position()
+/**
+ * [update_position updates current position of the ball]
+ */
+void update_position(void)
 {
-    // update position
     x += dx;
     y += dy;
     if (x < 0 || x >= width) {
@@ -533,7 +543,7 @@ void update_position()
  * [main The main loop]
  * @param  argc [number of arguments]
  * @param  argv [arguments]
- * @return      [description]
+ * @return      [nothing]
  */
 int main(int argc, char** argv) {
     // parse arguments
@@ -568,7 +578,7 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    // reset pong board and get its dimensions
+    // 
     init_board(nocheck);
     // measure future times relative to this moment
     elapsed_base = timestamp();
