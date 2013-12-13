@@ -575,9 +575,6 @@ int main(int argc, char** argv) {
     pthread_mutex_init(&shutUpEverybody, NULL);
     pthread_cond_init(&condvar, NULL);
 
-    // play game
-    char url[BUFSIZ];
-
     while (1)
     {
         // creating new thread to handle the next position
