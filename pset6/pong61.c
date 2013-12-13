@@ -294,52 +294,53 @@ http_connection* check_connection(int currentList)
         head = conn;
         return conn;
     } else {         
-            // Get the the first connection
-            http_connection *nextConn = head;
         
+        http_connection* temp = head;
         // If the first connection is availeable... use it. 
-        if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
-            conn = (http_connection*)nextConn;
+        if (temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) {
+            conn = temp ;
+            return conn;
         }
         // If next connection is null add a connectione to linked list
-        else if (nextConn->next == NULL) {
+        else if (temp -> next == NULL) {
             conn = http_connect(pong_addr);
-            nextConn->next = conn;
+            temp -> next = conn;
+            return conn;
         } else { 
            
             // Loop thorugh linked list 
-            while(nextConn->next != NULL) {
+            while(temp ->next != NULL) {
                 currentList ++;
-            http_connection *nextConnTemp = nextConn->next;
-            http_connection *oldConnTemp = nextConn;
-            nextConn = nextConnTemp;
+            http_connection *nextConnTemp = temp->next;
+            http_connection *oldConnTemp = temp;
+            temp = nextConnTemp;
             
             // Found a free connection... use it. 
-            if(nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
-                conn = (http_connection*)nextConn;
+            if(temp -> state == HTTP_DONE || temp -> state == HTTP_REQUEST) {
+                conn = temp;
                 break;
             } 
 
             // If the connection is broken...
             // Replace it with a new one
-            if (nextConn->state == HTTP_BROKEN) {
+            if (temp -> state == HTTP_BROKEN) {
                 http_connection *connTemp2 = http_connect(pong_addr);
-                connTemp2->next = nextConn->next;
-                oldConnTemp->next = connTemp2;
-                http_close(nextConn);
+                connTemp2->next = temp -> next;
+                oldConnTemp -> next = connTemp2;
+                http_close(temp);
                 conn = connTemp2;
                 break;
             } 
             
             // There was no connection. If we have less then 25 connections...
             // Add a new conection to the linked list. If not start itereating again the linked list.
-            else if (nextConn->next == NULL) {
+            else if (temp -> next == NULL) {
                 if (currentList > 25) {
-                    nextConn = head;
+                    temp = head;
                 currentList = 0;
                 } else {
                     conn = http_connect(pong_addr);
-                nextConn->next = conn;
+                temp -> next = conn;
                 break;
                 }
             }
