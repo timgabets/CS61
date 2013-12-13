@@ -7,7 +7,6 @@
  * The setting is a game called network pong.
  * 
  * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
- * Tim Gabets HUID 10924413 <gabets@g.harvard.edu>
  * 
  * November-December 2013
  */
@@ -31,25 +30,12 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
-// board dimensions:
-int width, height;
-// ball startup position:
-int x = 0, y = 0;
-// ball step sizes:
-int dx = 1, dy = 1;
-
-typedef struct pong_args {
-    int x;
-    int y;
-    int state;
-} pong_args;
-
-pong_args pa;
+// Global variables
+int openConnections = 0;
+int openThreads = 0;
+double startTime;
+// head of the connection table
 char*headCT = (char*)"h";
-
-pthread_mutex_t mutex;
-pthread_mutex_t shutUpEverybody;
-pthread_cond_t condvar;
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -69,6 +55,8 @@ double elapsed(void) {
 }
 
 
+// HTTP CONNECTION MANAGEMENT
+
 // http_connection
 //    This object represents an open HTTP connection to a server.
 typedef struct http_connection http_connection;
@@ -86,15 +74,13 @@ struct http_connection {
     struct http_connection *next;
 };
 
-http_connection* head = NULL;
-
 // `http_connection::state` constants
 #define HTTP_REQUEST 0      // Request not sent yet
 #define HTTP_INITIAL 1      // Before first line of response
 #define HTTP_HEADERS 2      // After first line of response, in headers
 #define HTTP_BODY    3      // In body
 #define HTTP_DONE   (-1)   // Body complete, available for a new request
-#define HTTP_CLOSED  (-2)   // Body complete, connection closed
+#define HTTP_CLOSED  (-2)   // Body /, connection closed
 #define HTTP_BROKEN  (-3)   // Parse error
 
 // helper functions
@@ -205,10 +191,10 @@ void http_receive_response_headers(http_connection* conn) {
     // read & parse data until told `http_process_response_headers`
     // tells us to stop
     while (http_process_response_headers(conn)) {
-      
-      // Phase 5 code
-      if (conn -> len != 0)
-        return;
+
+        if ( conn->len != 0) {
+        conn->len = 0;
+    } 
       
         ssize_t nr = read(conn->fd, &conn->buf[conn->len], BUFSIZ);
         if (nr == 0)
@@ -275,92 +261,29 @@ char* http_truncate_response(http_connection* conn) {
     return conn->buf;
 }
 
-/**
- * [check_connection description]
- * @return  [description]
- */
-http_connection* check_connection(int currentList)
-{
-    http_connection* conn;
-    if (head == NULL) 
-    {
-        conn = http_connect(pong_addr);
-        head  = conn;
-        return conn;
-    }   
-    else 
-    {        
-        http_connection* temp = head;
-        if (temp -> next == NULL) 
-        {
-            conn = http_connect(pong_addr);
-            temp ->next = conn;
-        } 
-        else 
-        { 
-        
-            // running through a linked list
-            while(temp -> next != NULL) 
-            {
-                currentList ++;
-                http_connection *nextConnTemp = temp -> next;
-                http_connection *oldConnTemp = temp;
-                temp = nextConnTemp;
-    
-                switch (temp -> state)
-                {
-                    case HTTP_DONE:
-                    case HTTP_REQUEST:
-                        conn = temp;
-                        return conn;
 
-                    case HTTP_BROKEN:
-                    {
-                        http_connection *connTemp2 = http_connect(pong_addr);
-                        connTemp2->next = temp -> next;
-                        oldConnTemp->next = connTemp2;
-                        http_close(temp);
-                        conn = connTemp2;
-                        return conn;
-                    }
+// MAIN PROGRAM
 
-                    default:
-                    {
-                        if (temp -> next == NULL) 
-                        {
-                            if (currentList > 25)
-                            {
-                                temp = head;
-                                currentList = 0;
-                            }               
-                            else 
-                            {
-                                conn = http_connect(pong_addr);
-                                temp -> next = conn;
-                                return conn;
-                            }
-                        }
-                    }
+typedef struct pong_args {
+    int x;
+    int y;
+    int state;
+} pong_args;
 
-                }   //end switch
-            }   // end while
-        }
-    }    
-
-    return conn;
-
-}
+pthread_mutex_t mutex;
+pthread_mutex_t shutUpEverybody;
+pthread_cond_t condvar;
 
 /**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
  * (which is a pointer to a `pong_args` structure).]
  * @param threadarg [description]
  */
-void* pong_thread(void* unused) {
+void* pong_thread(void* threadarg) {
     pthread_detach(pthread_self());
 
     // Copy thread arguments onto our stack.
-    //pong_args pa = *((pong_args*) threadarg);
+    pong_args pa = *((pong_args*) threadarg);
 
     char url[256];
     pthread_mutex_lock(&shutUpEverybody);
@@ -382,6 +305,7 @@ void* pong_thread(void* unused) {
         // And set it as the head of the linked list
         if (*headCT == 'h') {
             conn = http_connect(pong_addr);
+            openConnections ++;
             headCT = (char*)conn;
         } else {         
             // Get the the first connection
@@ -394,6 +318,7 @@ void* pong_thread(void* unused) {
         // If next connection is null add a connectione to linked list
         else if (nextConn->next == NULL) {
             conn = http_connect(pong_addr);
+            openConnections ++;
             nextConn->next = conn;
         } else { 
            
@@ -429,6 +354,7 @@ void* pong_thread(void* unused) {
                 currentList = 0;
                 } else {
                     conn = http_connect(pong_addr);
+                openConnections ++;
                 nextConn->next = conn;
                 break;
                 }
@@ -483,11 +409,14 @@ void* pong_thread(void* unused) {
 
     // signal the main thread to continue
     if (skip == 0) 
+    {
         pthread_cond_signal(&condvar);
-    
+    }
+    // decrement connections
+    openThreads --;
+    // and exit!
     pthread_exit(NULL);
 }
-
 
 
 /**
@@ -497,6 +426,118 @@ static void usage(void) {
     fprintf(stderr, "Usage: ./pong61 [-h HOST] [-p PORT] [USER]\n");
     exit(1);
 }
+
+
+/**
+ * [main The main loop]
+ * @param  argc [number of arguments]
+ * @param  argv [arguments]
+ * @return      [description]
+ */
+int main(int argc, char** argv) {
+    // parse arguments
+    int ch, nocheck = 0;
+    while ((ch = getopt(argc, argv, "nh:p:u:")) != -1) {
+        if (ch == 'h')
+            pong_host = optarg;
+        else if (ch == 'p')
+            pong_port = optarg;
+        else if (ch == 'u')
+            pong_user = optarg;
+        else if (ch == 'n')
+            nocheck = 1;
+        else
+            usage();
+    }
+    if (optind == argc - 1)
+        pong_user = argv[optind];
+    else if (optind != argc)
+        usage();
+
+    // look up network address of pong server
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_NUMERICSERV;
+    int r = getaddrinfo(pong_host, pong_port, &hints, &pong_addr);
+    if (r != 0) {
+        fprintf(stderr, "problem looking up %s: %s\n",
+                pong_host, gai_strerror(r));
+        exit(1);
+    }
+
+    // reset pong board and get its dimensions
+    int width, height;
+    {
+        http_connection* conn = http_connect(pong_addr);
+        http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
+        http_receive_response_headers(conn);
+        http_receive_response_body(conn);
+        if (conn->status_code != 200
+            || sscanf(conn->buf, "%d %d\n", &width, &height) != 2
+            || width <= 0 || height <= 0) {
+            fprintf(stderr, "bad response to \"reset\" RPC: %d %s\n",
+                    conn->status_code, http_truncate_response(conn));
+            exit(1);
+        }
+        http_close(conn);
+    }
+    // measure future times relative to this moment
+    elapsed_base = timestamp();
+
+    // print display URL
+    printf("Display: http://%s:%s/%s/%s\n",
+           pong_host, pong_port, pong_user,
+           nocheck ? " (NOCHECK mode)" : "");
+
+    // initialize global synchronization objects
+    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&shutUpEverybody, NULL);
+    pthread_cond_init(&condvar, NULL);
+
+    // play game
+    int x = 0, y = 0, dx = 1, dy = 1;
+    char url[BUFSIZ];
+
+    while (1)
+    {
+        pong_args pa;
+        pa.x = x;
+        pa.y = y;
+
+        // creating new thread to handle the next position
+        pthread_t pt;
+        if (pthread_create(&pt, NULL, pong_thread, &pa))
+        {
+            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
+            exit(1);
+        }
+
+        startTime = elapsed();
+        openThreads ++;
+        // wait until that thread signals us to continue
+        pthread_mutex_lock(&mutex);
+        pthread_cond_wait(&condvar, &mutex);
+    pthread_mutex_unlock(&mutex);
+
+        // update position
+        x += dx;
+        y += dy;
+        if (x < 0 || x >= width) {
+            dx = -dx;
+            x += 2 * dx;
+        }
+        if (y < 0 || y >= height) {
+            dy = -dy;
+            y += 2 * dy;
+        }
+
+        // wait 0.1sec
+        usleep(100000);
+    }
+}
+
 
 /**
  * [http_process_response_headers Parse the response represented by `conn->buf`. Returns 1
@@ -556,120 +597,4 @@ static int http_check_response_body(http_connection* conn) {
     }
     return conn->state == HTTP_BODY;
     
-}
-
-/**
- * [update_position description]
- */
-void update_position(void)
-{
-    x += dx;
-    y += dy;
-    if (x < 0 || x >= width) {
-        dx = -dx;
-        x += 2 * dx;
-    }
-    if (y < 0 || y >= height) {
-        dy = -dy;
-        y += 2 * dy;
-    }
-
-    pa.x = x;
-    pa.y = y;
-}
-
-/**
- * [init_board description]
- * @param nocheck [description]
- */
-void init_board(int nocheck)
-{
-    http_connection* conn = http_connect(pong_addr);
-    http_send_request(conn, nocheck ? "reset?nocheck=1" : "reset");
-    http_receive_response_headers(conn);
-    http_receive_response_body(conn);
-    if (conn->status_code != 200
-        || sscanf(conn->buf, "%d %d\n", &width, &height) != 2
-        || width <= 0 || height <= 0) {
-        fprintf(stderr, "bad response to \"reset\" RPC: %d %s\n",
-                conn->status_code, http_truncate_response(conn));
-        exit(1);
-    }
-    http_close(conn);
-}
-
-/**
- * [main The main loop]
- * @param  argc [number of arguments]
- * @param  argv [arguments]
- * @return      [description]
- */
-int main(int argc, char** argv) {
-    // parse arguments
-    int ch, nocheck = 0;
-    while ((ch = getopt(argc, argv, "nh:p:u:")) != -1) {
-        if (ch == 'h')
-            pong_host = optarg;
-        else if (ch == 'p')
-            pong_port = optarg;
-        else if (ch == 'u')
-            pong_user = optarg;
-        else if (ch == 'n')
-            nocheck = 1;
-        else
-            usage();
-    }
-    if (optind == argc - 1)
-        pong_user = argv[optind];
-    else if (optind != argc)
-        usage();
-
-    // look up network address of pong server
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_NUMERICSERV;
-    int r = getaddrinfo(pong_host, pong_port, &hints, &pong_addr);
-    if (r != 0) {
-        fprintf(stderr, "problem looking up %s: %s\n",
-                pong_host, gai_strerror(r));
-        exit(1);
-    }
-
-    // reset pong board and get its dimensions
-    init_board(nocheck);
-
-    // measure future times relative to this moment
-    elapsed_base = timestamp();
-
-    // print display URL
-    printf("Display: http://%s:%s/%s/%s\n",
-           pong_host, pong_port, pong_user,
-           nocheck ? " (NOCHECK mode)" : "");
-
-    // initialize global synchronization objects
-    pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&shutUpEverybody, NULL);
-    pthread_cond_init(&condvar, NULL);
-
-    // play game
-    while (1)
-    {
-        // creating new thread to handle the next position
-        pthread_t pt;
-        if (pthread_create(&pt, NULL, pong_thread, NULL))
-        {
-            fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
-            exit(1);
-        }
-
-        // wait until that thread signals us to continue
-        pthread_mutex_lock(&mutex);
-        pthread_cond_wait(&condvar, &mutex);
-        pthread_mutex_unlock(&mutex);
-
-        update_position();
-        usleep(100000);     // wait 0.1sec
-    }
 }
