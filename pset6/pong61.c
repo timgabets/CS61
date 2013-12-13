@@ -30,6 +30,18 @@ static const char* pong_port = PONG_PORT;
 static const char* pong_user = PONG_USER;
 static struct addrinfo* pong_addr;
 
+typedef struct pong_args {
+    int x;
+    int y;
+    int state;
+} pong_args;
+
+pong_args pa;
+
+pthread_mutex_t mutex;
+pthread_mutex_t shutUpEverybody;
+pthread_cond_t condvar;
+
 // board dimensions
 int width, height;
 // initial ball position
@@ -265,19 +277,75 @@ char* http_truncate_response(http_connection* conn) {
 }
 
 
-// MAIN PROGRAM
+http_connection* check_connection(int currentList)
+{
+    http_connection* conn;
 
-typedef struct pong_args {
-    int x;
-    int y;
-    int state;
-} pong_args;
+        if(pa.state != HTTP_DONE) {
+      
+        // Use a linked list of 25 open connections
+        // If the first connection is empty add a new connection...
+        // And set it as the head of the linked list
+        if (*headCT == 'h') {
+            conn = http_connect(pong_addr);
+            headCT = (char*)conn;
+        } else {         
+            // Get the the first connection
+            http_connection *nextConn = (http_connection*)headCT;
+        
+        // If the first connection is availeable... use it. 
+        if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
+            conn = (http_connection*)nextConn;
+        }
+        // If next connection is null add a connectione to linked list
+        else if (nextConn->next == NULL) {
+            conn = http_connect(pong_addr);
+            nextConn->next = conn;
+        } else { 
+           
+            // Loop thorugh linked list 
+            while(nextConn->next != NULL) {
+                currentList ++;
+            http_connection *nextConnTemp = nextConn->next;
+            http_connection *oldConnTemp = nextConn;
+            nextConn = nextConnTemp;
+            
+            // Found a free connection... use it. 
+            if(nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
+                conn = (http_connection*)nextConn;
+                break;
+            } 
 
-pong_args pa;
+            // If the connection is broken...
+            // Replace it with a new one
+            if (nextConn->state == HTTP_BROKEN) {
+                http_connection *connTemp2 = http_connect(pong_addr);
+                connTemp2->next = nextConn->next;
+                oldConnTemp->next = connTemp2;
+                http_close(nextConn);
+                conn = connTemp2;
+                break;
+            } 
+            
+            // There was no connection. If we have less then 25 connections...
+            // Add a new conection to the linked list. If not start itereating again the linked list.
+            else if (nextConn->next == NULL) {
+                if (currentList > 25) {
+                    nextConn = (http_connection*)headCT;
+                currentList = 0;
+                } else {
+                    conn = http_connect(pong_addr);
+                nextConn->next = conn;
+                break;
+                }
+            }
+            }
+        }
+        }
+    }     
 
-pthread_mutex_t mutex;
-pthread_mutex_t shutUpEverybody;
-pthread_cond_t condvar;
+    return conn;
+}
 
 /**
  * [pong_thread Connect to the server at the position indicated by `threadarg`
@@ -302,7 +370,11 @@ void* pong_thread(void* threadarg) {
     int skip = 0;
 
     int currentList = 0;
-    while (1) {
+    while (1) 
+    {
+
+        conn = check_connection(currentList);
+        /*
         if(pa.state != HTTP_DONE) {
       
         // Use a linked list of 25 open connections
@@ -365,7 +437,7 @@ void* pong_thread(void* threadarg) {
         }
         }
     } 
- 
+    */
     http_send_request(conn, url);
     http_receive_response_headers(conn);
 
