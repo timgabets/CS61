@@ -290,6 +290,7 @@ http_connection* check_connection(int currentList)
 
     if (head == NULL) {
         conn = http_connect(pong_addr);
+        assert(conn != NULL);
         head = conn;
         return conn;
     } else {         
@@ -309,6 +310,7 @@ http_connection* check_connection(int currentList)
                 case HTTP_BROKEN:
                 {
                     http_connection* new = http_connect(pong_addr);
+                    assert(new != NULL);
                     new -> next = temp -> next;
 
                     if(prev != NULL)
@@ -321,6 +323,7 @@ http_connection* check_connection(int currentList)
                 }
             }
         
+            prev = temp;
             temp = temp -> next;    
         } // end while
     } 
