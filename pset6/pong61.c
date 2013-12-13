@@ -355,21 +355,17 @@ http_connection* check_connection(int currentList)
 void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
 
-    // Copy thread arguments onto our stack.
-    //pong_args pa = *((pong_args*) threadarg);
-
     char url[256];
+    http_connection* conn;
+    int waitTime = 1,
+        skip = 0,
+        currentList = 0;
+
     pthread_mutex_lock(&shutUpEverybody);
     snprintf(url, sizeof(url),  "move?x=%d&y=%d&style=on",
              pa.x, pa.y);
     pthread_mutex_unlock(&shutUpEverybody);
 
-    http_connection* conn;
-
-    int waitTime = 1;
-    int skip = 0;
-
-    int currentList = 0;
     while (1) 
     {
         conn = check_connection(currentList);
