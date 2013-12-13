@@ -50,8 +50,7 @@ int x = 0, y = 0;
 // ball step size
 int dx = 1, dy = 1;
 
-// head of the connection table
-http_connection* head = NULL;
+
 
 // TIME HELPERS
 double elapsed_base = 0;
@@ -89,6 +88,9 @@ struct http_connection {
     size_t len;             // Length of response buffer
     struct http_connection *next;
 };
+
+// head of the connection table
+http_connection* head = NULL;
 
 // `http_connection::state` constants
 #define HTTP_REQUEST 0      // Request not sent yet
@@ -282,11 +284,6 @@ http_connection* check_connection(int currentList)
 {
     http_connection* conn;
 
-//        if(pa.state != HTTP_DONE) {
-      
-        // Use a linked list of 25 open connections
-        // If the first connection is empty add a new connection...
-        // And set it as the head of the linked list
     if (head == NULL) {
         conn = http_connect(pong_addr);
         head = conn;
@@ -344,7 +341,6 @@ http_connection* check_connection(int currentList)
             }
         }
         }
-    //} 
 
     return conn;
 }
