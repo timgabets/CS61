@@ -374,111 +374,56 @@ void* pong_thread(void* threadarg) {
     {
 
         conn = check_connection(currentList);
-        /*
-        if(pa.state != HTTP_DONE) {
-      
-        // Use a linked list of 25 open connections
-        // If the first connection is empty add a new connection...
-        // And set it as the head of the linked list
-        if (*headCT == 'h') {
-            conn = http_connect(pong_addr);
-            headCT = (char*)conn;
-        } else {         
-            // Get the the first connection
-            http_connection *nextConn = (http_connection*)headCT;
-        
-        // If the first connection is availeable... use it. 
-        if (nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
-            conn = (http_connection*)nextConn;
-        }
-        // If next connection is null add a connectione to linked list
-        else if (nextConn->next == NULL) {
-            conn = http_connect(pong_addr);
-            nextConn->next = conn;
-        } else { 
-           
-            // Loop thorugh linked list 
-            while(nextConn->next != NULL) {
-                currentList ++;
-            http_connection *nextConnTemp = nextConn->next;
-            http_connection *oldConnTemp = nextConn;
-            nextConn = nextConnTemp;
-            
-            // Found a free connection... use it. 
-            if(nextConn->state == HTTP_DONE || nextConn->state == HTTP_REQUEST) {
-                conn = (http_connection*)nextConn;
-                break;
-            } 
+   
+        http_send_request(conn, url);
+        http_receive_response_headers(conn);
 
-            // If the connection is broken...
-            // Replace it with a new one
-            if (nextConn->state == HTTP_BROKEN) {
-                http_connection *connTemp2 = http_connect(pong_addr);
-                connTemp2->next = nextConn->next;
-                oldConnTemp->next = connTemp2;
-                http_close(nextConn);
-                conn = connTemp2;
-                break;
-            } 
-            
-            // There was no connection. If we have less then 25 connections...
-            // Add a new conection to the linked list. If not start itereating again the linked list.
-            else if (nextConn->next == NULL) {
-                if (currentList > 25) {
-                    nextConn = (http_connection*)headCT;
-                currentList = 0;
-                } else {
-                    conn = http_connect(pong_addr);
-                nextConn->next = conn;
-                break;
-                }
-            }
-            }
-        }
-        }
-    } 
-    */
-    http_send_request(conn, url);
-    http_receive_response_headers(conn);
-
-    
-        if (conn->status_code == 200) {
-        skip = 1;
-        pthread_cond_signal(&condvar);
-        http_receive_response_body(conn);
+        switch(conn->status_code)
+        {
+            case 200:
+            {
+                skip = 1;
+                pthread_cond_signal(&condvar);
+                http_receive_response_body(conn);
        
-        int result = strncmp("0 OK", conn -> buf, 4);
-        if( result != 0 ) {
-            // If it is not 0 OK it is a stop...
-            // lock the critical zone to avoid threads going in
-            pthread_mutex_lock(&shutUpEverybody);
+                int result = strncmp("0 OK", conn -> buf, 4);
+                if( result != 0 )
+                {
+                    // If it is not 0 OK it is a stop...
+                    // lock the critical zone to avoid threads going in
+                    pthread_mutex_lock(&shutUpEverybody);
         
-        // Parse the time to stop
-        char* waitTimeString = &(conn -> buf[1]);
-        int i = 0;
-        while(waitTimeString[i] != ' ')
-          i++;
+                // Parse the time to stop
+                char* waitTimeString = &(conn -> buf[1]);
+                int i = 0;
+                while(waitTimeString[i] != ' ')
+                  i++;
 
-        waitTimeString[i] = '\0';
-        waitTime = atoi(waitTimeString);          
-        
-        // Sleep for given time
-        usleep(waitTime * 1000);      
-        
-        // Unlock
-        pthread_mutex_unlock(&shutUpEverybody);
-        }
-        break;
-    } else if(conn->status_code == -1) {
+                waitTimeString[i] = '\0';
+                waitTime = atoi(waitTimeString);          
             
-        // Retry...
-        usleep(waitTime * 100000);
-            // Exponential Backoff...
-            // Next try wait 2 to the power of waitTime
-            waitTime = 1 << waitTime;
-        } else {
-        fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);
+                // Sleep for given time
+                usleep(waitTime * 1000);      
+            
+                // Unlock
+                pthread_mutex_unlock(&shutUpEverybody);
+                }
+                
+                break; // from swicth
+            }
+
+            case -1:
+                // Retry...
+                usleep(waitTime * 100000);
+                waitTime *= 2 ;
+                break;
+
+            default:
+                fprintf(stderr, "%.3f sec: warning: %d,%d: server returned status %d (expected 200)\n", elapsed(), pa.x, pa.y, conn->status_code);        
         }
+
+        if(skip == 1)
+            break; // from while
     }
 
     // signal the main thread to continue
