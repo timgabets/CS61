@@ -7,6 +7,7 @@
  * The setting is a game called network pong.
  * 
  * Ricardo Contreras HUID 30857194 <ricardocontreras@g.harvard.edu>
+ * Tim Gabets HUID 10924413 <tim@gabets.ru>
  * 
  * November-December 2013
  */
@@ -281,7 +282,7 @@ http_connection* check_connection(int currentList)
 {
     http_connection* conn;
 
-        if(pa.state != HTTP_DONE) {
+//        if(pa.state != HTTP_DONE) {
       
         // Use a linked list of 25 open connections
         // If the first connection is empty add a new connection...
@@ -342,7 +343,7 @@ http_connection* check_connection(int currentList)
             }
         }
         }
-    }     
+    //} 
 
     return conn;
 }
