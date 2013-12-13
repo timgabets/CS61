@@ -352,11 +352,11 @@ http_connection* check_connection(int currentList)
  * (which is a pointer to a `pong_args` structure).]
  * @param threadarg [description]
  */
-void* pong_thread(void* threadarg) {
+void* pong_thread(void* unused) {
     pthread_detach(pthread_self());
 
     // Copy thread arguments onto our stack.
-    pong_args pa = *((pong_args*) threadarg);
+    //pong_args pa = *((pong_args*) threadarg);
 
     char url[256];
     pthread_mutex_lock(&shutUpEverybody);
@@ -372,7 +372,6 @@ void* pong_thread(void* threadarg) {
     int currentList = 0;
     while (1) 
     {
-
         conn = check_connection(currentList);
    
         http_send_request(conn, url);
@@ -389,24 +388,22 @@ void* pong_thread(void* threadarg) {
                 int result = strncmp("0 OK", conn -> buf, 4);
                 if( result != 0 )
                 {
-                    // If it is not 0 OK it is a stop...
-                    // lock the critical zone to avoid threads going in
+                    // STOP
                     pthread_mutex_lock(&shutUpEverybody);
         
-                // Parse the time to stop
-                char* waitTimeString = &(conn -> buf[1]);
-                int i = 0;
-                while(waitTimeString[i] != ' ')
-                  i++;
+                    // Parse the time to stop
+                    char* waitTimeString = &(conn -> buf[1]);
+                    int i = 0;
+                    while(waitTimeString[i] != ' ')
+                        i++;
 
-                waitTimeString[i] = '\0';
-                waitTime = atoi(waitTimeString);          
+                    waitTimeString[i] = '\0';
+                    waitTime = atoi(waitTimeString);          
             
-                // Sleep for given time
-                usleep(waitTime * 1000);      
+                    // Sleep for given time
+                    usleep(waitTime * 1000);      
             
-                // Unlock
-                pthread_mutex_unlock(&shutUpEverybody);
+                    pthread_mutex_unlock(&shutUpEverybody);
                 }
                 
                 break; // from swicth
@@ -596,7 +593,7 @@ int main(int argc, char** argv) {
     {
         // creating new thread to handle the next position
         pthread_t pt;
-        if (pthread_create(&pt, NULL, pong_thread, &pa))
+        if (pthread_create(&pt, NULL, pong_thread, NULL))
         {
             fprintf(stderr, "%.3f sec: pthread_create: %s\n",elapsed(), strerror(r));
             exit(1);
