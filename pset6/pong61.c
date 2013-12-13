@@ -295,14 +295,42 @@ http_connection* check_connection(int currentList)
     } else {         
         
         http_connection* temp = head;
-/*
+        http_connection* prev = NULL;
         // running through a linked list:
-        if (temp -> next == NULL) {
+        while(temp != NULL)
+        {
+            switch(temp -> state)
+            {
+                case HTTP_DONE:
+                case HTTP_REQUEST:
+                    conn = temp;
+                    return conn;
+
+                case HTTP_BROKEN:
+                {
+                    http_connection* new = http_connect(pong_addr);
+                    new -> next = temp -> next;
+
+                    if(prev != NULL)
+                        prev -> next = new;
+                    else
+                        head = new;
+                    
+                    http_close(temp);
+                    return new;
+                }
+            }
+        
+            temp = temp -> next;    
+        } // end while
+    } 
+/*        
+      if (temp -> next == NULL) {
             conn = http_connect(pong_addr);
             temp -> next = conn;
             return conn;
         } else { 
-*/           
+         
         // Loop thorugh linked list 
         while(temp ->next != NULL) 
         {
@@ -349,8 +377,9 @@ http_connection* check_connection(int currentList)
 
     //}
     }
+*/
+    return NULL;
 
-    return conn;
 }
 
 /**
